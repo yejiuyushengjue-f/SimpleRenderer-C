@@ -10,6 +10,7 @@ class Texture;
 struct Vertex {
     Vec3 position;
     Vec2 uv;
+    Vec3 normal;
     Color color;
 };
 

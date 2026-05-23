@@ -15,7 +15,14 @@ struct ScreenVertex {
     float depth = 0.0f;
     float invW = 1.0f;
     Vec2 uvOverW;
+    Vec3 normalOverW;
     Color color;
+};
+
+struct DirectionalLight {
+    Vec3 direction;
+    Color color;
+    float intensity = 1.0f;
 };
 
 float edge(Vec2 a, Vec2 b, Vec2 p)
@@ -48,6 +55,35 @@ Color modulate(Color a, Color b)
     };
 }
 
+Color scaleColor(Color color, float scale)
+{
+    const auto scaleChannel = [scale](std::uint8_t value) {
+        return static_cast<std::uint8_t>(std::clamp(static_cast<float>(value) * scale, 0.0f, 255.0f));
+    };
+
+    return {
+        scaleChannel(color.r),
+        scaleChannel(color.g),
+        scaleChannel(color.b),
+        color.a,
+    };
+}
+
+Color applyLighting(Color albedo, Vec3 normal, const DirectionalLight& light, float ambient)
+{
+    const Vec3 n = normalize(normal);
+    const Vec3 lightToSurface = normalize(light.direction);
+    const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity;
+    const float brightness = std::clamp(ambient + diffuse, 0.0f, 1.0f);
+    return modulate(scaleColor(albedo, brightness), light.color);
+}
+
+Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
+{
+    const Vec4 transformed = matrix * Vec4 { direction.x, direction.y, direction.z, 0.0f };
+    return normalize({ transformed.x, transformed.y, transformed.z });
+}
+
 } // namespace
 
 void Renderer::render(const TestScene& scene, Framebuffer& framebuffer)
@@ -63,6 +99,13 @@ void Renderer::render(const TestScene& scene, Framebuffer& framebuffer)
 void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Framebuffer& framebuffer)
 {
     const Mat4 mvp = viewProjection * command.transform;
+    const DirectionalLight light {
+        normalize({ -0.45f, -0.55f, 1.0f }),
+        { 255, 244, 224, 255 },
+        0.8f,
+    };
+    constexpr float ambient = 0.24f;
+
     ScreenVertex screen[3] = {};
     const int vertexCount = std::min(command.mesh.vertexCount, 3);
 
@@ -87,6 +130,7 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
             ndcZ,
             invW,
             { vertex.uv.x * invW, vertex.uv.y * invW },
+            transformDirection(command.transform, vertex.normal) * invW,
             vertex.color,
         };
     }
@@ -130,11 +174,17 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
                 (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
                 (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
             };
+            const Vec3 normal = {
+                (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
+                (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
+                (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
+            };
 
             Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
             if (command.texture) {
                 color = modulate(command.texture->sample(uv), color);
             }
+            color = applyLighting(color, normal, light, ambient);
 
             framebuffer.setPixelIfCloser(x, y, depth, color);
         }

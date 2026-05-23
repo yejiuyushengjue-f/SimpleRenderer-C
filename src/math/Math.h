@@ -24,6 +24,7 @@ struct Vec3 {
     Vec3 operator+(Vec3 rhs) const { return { x + rhs.x, y + rhs.y, z + rhs.z }; }
     Vec3 operator-(Vec3 rhs) const { return { x - rhs.x, y - rhs.y, z - rhs.z }; }
     Vec3 operator*(float scalar) const { return { x * scalar, y * scalar, z * scalar }; }
+    Vec3 operator/(float scalar) const { return { x / scalar, y / scalar, z / scalar }; }
 };
 
 struct Vec4 {
@@ -88,6 +89,30 @@ struct Mat4 {
         result.m[0][1] = -s;
         result.m[1][0] = s;
         result.m[1][1] = c;
+        return result;
+    }
+
+    static Mat4 rotationX(float angleRadians)
+    {
+        Mat4 result = identity();
+        const float c = std::cos(angleRadians);
+        const float s = std::sin(angleRadians);
+        result.m[1][1] = c;
+        result.m[1][2] = -s;
+        result.m[2][1] = s;
+        result.m[2][2] = c;
+        return result;
+    }
+
+    static Mat4 rotationY(float angleRadians)
+    {
+        Mat4 result = identity();
+        const float c = std::cos(angleRadians);
+        const float s = std::sin(angleRadians);
+        result.m[0][0] = c;
+        result.m[0][2] = s;
+        result.m[2][0] = -s;
+        result.m[2][2] = c;
         return result;
     }
 
