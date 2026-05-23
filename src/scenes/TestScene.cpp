@@ -5,19 +5,22 @@
 namespace sr {
 
 TestScene::TestScene()
-    : frontTriangle_ {
-        Vertex { { 0.0f, 0.72f, 0.0f }, { 245, 96, 78, 255 } },
-        Vertex { { -0.78f, -0.58f, 0.0f }, { 73, 190, 255, 255 } },
-        Vertex { { 0.78f, -0.58f, 0.0f }, { 250, 218, 90, 255 } },
+    : checkerboard_(Texture::makeCheckerboard(128, 128, 8))
+    , frontTriangle_ {
+        Vertex { { 0.0f, 0.72f, -0.35f }, { 0.5f, 1.2f }, { 255, 255, 255, 255 } },
+        Vertex { { -0.9f, -0.62f, 0.25f }, { -0.15f, -0.15f }, { 255, 180, 180, 255 } },
+        Vertex { { 0.9f, -0.62f, 0.25f }, { 1.15f, -0.15f }, { 180, 220, 255, 255 } },
     }
     , backTriangle_ {
-        Vertex { { 0.0f, -0.72f, 0.0f }, { 76, 235, 164, 255 } },
-        Vertex { { -0.92f, 0.52f, 0.0f }, { 134, 112, 255, 255 } },
-        Vertex { { 0.92f, 0.52f, 0.0f }, { 255, 151, 79, 255 } },
+        Vertex { { 0.0f, -0.72f, 0.15f }, { 0.5f, -0.25f }, { 165, 255, 204, 255 } },
+        Vertex { { -0.92f, 0.52f, -0.1f }, { -0.25f, 1.15f }, { 220, 190, 255, 255 } },
+        Vertex { { 0.92f, 0.52f, -0.1f }, { 1.25f, 1.15f }, { 255, 209, 168, 255 } },
     }
 {
     commands_[0].mesh = Mesh { frontTriangle_.data(), static_cast<int>(frontTriangle_.size()) };
+    commands_[0].texture = &checkerboard_;
     commands_[1].mesh = Mesh { backTriangle_.data(), static_cast<int>(backTriangle_.size()) };
+    commands_[1].texture = &checkerboard_;
 }
 
 void TestScene::update(float deltaSeconds)

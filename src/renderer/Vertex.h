@@ -5,8 +5,11 @@
 
 namespace sr {
 
+class Texture;
+
 struct Vertex {
     Vec3 position;
+    Vec2 uv;
     Color color;
 };
 
@@ -17,6 +20,7 @@ struct Mesh {
 
 struct DrawCommand {
     Mesh mesh;
+    const Texture* texture = nullptr;
     Mat4 transform = Mat4::identity();
 };
 

@@ -1,6 +1,7 @@
 #include "renderer/Renderer.h"
 
 #include "scenes/TestScene.h"
+#include "renderer/Texture.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +13,8 @@ namespace {
 struct ScreenVertex {
     Vec2 position;
     float depth = 0.0f;
+    float invW = 1.0f;
+    Vec2 uvOverW;
     Color color;
 };
 
@@ -32,6 +35,16 @@ Color mixColor(Color a, Color b, Color c, float wa, float wb, float wc)
         blend(a.g, b.g, c.g),
         blend(a.b, b.b, c.b),
         blend(a.a, b.a, c.a),
+    };
+}
+
+Color modulate(Color a, Color b)
+{
+    return {
+        static_cast<std::uint8_t>((static_cast<int>(a.r) * static_cast<int>(b.r)) / 255),
+        static_cast<std::uint8_t>((static_cast<int>(a.g) * static_cast<int>(b.g)) / 255),
+        static_cast<std::uint8_t>((static_cast<int>(a.b) * static_cast<int>(b.b)) / 255),
+        static_cast<std::uint8_t>((static_cast<int>(a.a) * static_cast<int>(b.a)) / 255),
     };
 }
 
@@ -72,6 +85,8 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
                 (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(framebuffer.height() - 1),
             },
             ndcZ,
+            invW,
+            { vertex.uv.x * invW, vertex.uv.y * invW },
             vertex.color,
         };
     }
@@ -106,7 +121,21 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
             }
 
             const float depth = screen[0].depth * w0 + screen[1].depth * w1 + screen[2].depth * w2;
-            const Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+            const float interpolatedInvW = screen[0].invW * w0 + screen[1].invW * w1 + screen[2].invW * w2;
+            if (interpolatedInvW <= 0.000001f) {
+                continue;
+            }
+
+            const Vec2 uv {
+                (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
+                (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
+            };
+
+            Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+            if (command.texture) {
+                color = modulate(command.texture->sample(uv), color);
+            }
+
             framebuffer.setPixelIfCloser(x, y, depth, color);
         }
     }

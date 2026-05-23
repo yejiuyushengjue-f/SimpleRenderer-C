@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer/Vertex.h"
+#include "renderer/Texture.h"
 
 #include <array>
 #include <span>
@@ -17,6 +18,7 @@ public:
 
 private:
     float rotation_ = 0.0f;
+    Texture checkerboard_;
     std::array<Vertex, 3> frontTriangle_;
     std::array<Vertex, 3> backTriangle_;
     std::array<DrawCommand, 2> commands_;
