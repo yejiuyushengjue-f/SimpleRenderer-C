@@ -14,6 +14,7 @@ struct ScreenVertex {
     Vec2 position;
     float depth = 0.0f;
     float invW = 1.0f;
+    Vec3 viewPositionOverW;
     Vec2 uvOverW;
     Vec3 normalOverW;
     Color color;
@@ -69,13 +70,23 @@ Color scaleColor(Color color, float scale)
     };
 }
 
-Color applyLighting(Color albedo, Vec3 normal, const DirectionalLight& light, float ambient)
+Color applyLighting(Color albedo, Vec3 normal, Vec3 viewPosition, const DirectionalLight& light, float ambient, float specularStrength, float shininess)
 {
     const Vec3 n = normalize(normal);
     const Vec3 lightToSurface = normalize(light.direction);
+    const Vec3 viewDirection = normalize({ -viewPosition.x, -viewPosition.y, -viewPosition.z });
+    const Vec3 halfVector = normalize(lightToSurface + viewDirection);
+
     const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity;
-    const float brightness = std::clamp(ambient + diffuse, 0.0f, 1.0f);
-    return modulate(scaleColor(albedo, brightness), light.color);
+    const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity;
+
+    const Color litDiffuse = modulate(scaleColor(albedo, ambient + diffuse), light.color);
+    return {
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.r) + static_cast<float>(light.color.r) * specular, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.g) + static_cast<float>(light.color.g) * specular, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.b) + static_cast<float>(light.color.b) * specular, 0.0f, 255.0f)),
+        albedo.a,
+    };
 }
 
 Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
@@ -98,6 +109,17 @@ void Renderer::render(const TestScene& scene, Framebuffer& framebuffer)
 
 void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Framebuffer& framebuffer)
 {
+    if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
+        return;
+    }
+
+    for (int i = 0; i + 2 < command.mesh.vertexCount; i += 3) {
+        drawTriangle(command, command.mesh.vertices + i, viewProjection, framebuffer);
+    }
+}
+
+void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& viewProjection, Framebuffer& framebuffer)
+{
     const Mat4 mvp = viewProjection * command.transform;
     const DirectionalLight light {
         normalize({ -0.45f, -0.55f, 1.0f }),
@@ -105,12 +127,14 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
         0.8f,
     };
     constexpr float ambient = 0.24f;
+    constexpr float specularStrength = 0.48f;
+    constexpr float shininess = 48.0f;
 
     ScreenVertex screen[3] = {};
-    const int vertexCount = std::min(command.mesh.vertexCount, 3);
 
-    for (int i = 0; i < vertexCount; ++i) {
-        const Vertex& vertex = command.mesh.vertices[i];
+    for (int i = 0; i < 3; ++i) {
+        const Vertex& vertex = vertices[i];
+        const Vec4 viewPosition = command.transform * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
 
         if (clip.w <= 0.000001f) {
@@ -129,14 +153,11 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
             },
             ndcZ,
             invW,
+            { viewPosition.x * invW, viewPosition.y * invW, viewPosition.z * invW },
             { vertex.uv.x * invW, vertex.uv.y * invW },
             transformDirection(command.transform, vertex.normal) * invW,
             vertex.color,
         };
-    }
-
-    if (vertexCount != 3) {
-        return;
     }
 
     const Vec2 p0 = screen[0].position;
@@ -174,6 +195,11 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
                 (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
                 (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
             };
+            const Vec3 viewPosition = {
+                (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
+                (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
+                (screen[0].viewPositionOverW.z * w0 + screen[1].viewPositionOverW.z * w1 + screen[2].viewPositionOverW.z * w2) / interpolatedInvW,
+            };
             const Vec3 normal = {
                 (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
                 (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
@@ -184,7 +210,7 @@ void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Fram
             if (command.texture) {
                 color = modulate(command.texture->sample(uv), color);
             }
-            color = applyLighting(color, normal, light, ambient);
+            color = applyLighting(color, normal, viewPosition, light, ambient, specularStrength, shininess);
 
             framebuffer.setPixelIfCloser(x, y, depth, color);
         }

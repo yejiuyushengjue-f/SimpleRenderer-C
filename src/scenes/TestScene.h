@@ -1,10 +1,11 @@
 #pragma once
 
-#include "renderer/Vertex.h"
 #include "renderer/Texture.h"
+#include "renderer/Vertex.h"
 
 #include <array>
 #include <span>
+#include <vector>
 
 namespace sr {
 
@@ -18,9 +19,10 @@ public:
 
 private:
     float rotation_ = 0.0f;
-    Texture checkerboard_;
-    std::array<Vertex, 3> frontTriangle_;
-    std::array<Vertex, 3> backTriangle_;
+    Texture sphereTexture_;
+    Texture cubeTexture_;
+    std::vector<Vertex> sphereMesh_;
+    std::vector<Vertex> cubeMesh_;
     std::array<DrawCommand, 2> commands_;
 };
 

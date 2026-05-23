@@ -18,6 +18,7 @@ add_executable(SimpleRenderer WIN32
 
 target_include_directories(SimpleRenderer PRIVATE src)
 target_compile_definitions(SimpleRenderer PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(SimpleRenderer PRIVATE ole32 windowscodecs)
 
 if(MSVC)
     target_compile_options(SimpleRenderer PRIVATE /W4 /permissive- /utf-8)

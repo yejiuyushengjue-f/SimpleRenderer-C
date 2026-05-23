@@ -18,6 +18,7 @@ public:
 
     Color sample(Vec2 uv) const;
 
+    static Texture loadFromFile(const wchar_t* path);
     static Texture makeCheckerboard(int width, int height, int cells);
 
 private:

@@ -13,6 +13,7 @@ public:
 
 private:
     void draw(const DrawCommand& command, const Mat4& viewProjection, Framebuffer& framebuffer);
+    void drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& viewProjection, Framebuffer& framebuffer);
 };
 
 } // namespace sr
