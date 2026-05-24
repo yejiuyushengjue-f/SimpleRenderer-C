@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace sr {
 
@@ -14,10 +15,16 @@ struct ScreenVertex {
     Vec2 position;
     float depth = 0.0f;
     float invW = 1.0f;
+    Vec3 worldPositionOverW;
     Vec3 viewPositionOverW;
     Vec2 uvOverW;
     Vec3 normalOverW;
     Color color;
+};
+
+struct ShadowVertex {
+    Vec2 position;
+    float depth = 0.0f;
 };
 
 struct DirectionalLight {
@@ -70,7 +77,7 @@ Color scaleColor(Color color, float scale)
     };
 }
 
-Color applyLighting(Color albedo, Vec3 normal, Vec3 viewPosition, const DirectionalLight& light, float ambient, float specularStrength, float shininess)
+Color applyLighting(Color albedo, Vec3 normal, Vec3 viewPosition, const DirectionalLight& light, float ambient, float specularStrength, float shininess, float shadow)
 {
     const Vec3 n = normalize(normal);
     const Vec3 lightToSurface = normalize(light.direction);
@@ -80,11 +87,11 @@ Color applyLighting(Color albedo, Vec3 normal, Vec3 viewPosition, const Directio
     const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity;
     const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity;
 
-    const Color litDiffuse = modulate(scaleColor(albedo, ambient + diffuse), light.color);
+    const Color litDiffuse = modulate(scaleColor(albedo, ambient + diffuse * shadow), light.color);
     return {
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.r) + static_cast<float>(light.color.r) * specular, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.g) + static_cast<float>(light.color.g) * specular, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.b) + static_cast<float>(light.color.b) * specular, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.r) + static_cast<float>(light.color.r) * specular * shadow, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.g) + static_cast<float>(light.color.g) * specular * shadow, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.b) + static_cast<float>(light.color.b) * specular * shadow, 0.0f, 255.0f)),
         albedo.a,
     };
 }
@@ -95,39 +102,117 @@ Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
     return normalize({ transformed.x, transformed.y, transformed.z });
 }
 
+DirectionalLight sceneLight()
+{
+    return {
+        normalize({ -0.45f, -0.55f, 1.0f }),
+        { 255, 244, 224, 255 },
+        0.8f,
+    };
+}
+
+Mat4 sceneLightViewProjection(const DirectionalLight& light)
+{
+    const Vec3 lightPosition = light.direction * 6.5f;
+    const Mat4 lightView = Mat4::lookAt(lightPosition, { 0.0f, 0.0f, -3.0f }, { 0.0f, 1.0f, 0.0f });
+    const Mat4 lightProjection = Mat4::orthographic(-4.0f, 4.0f, -4.0f, 4.0f, 0.1f, 12.0f);
+    return lightProjection * lightView;
+}
+
+float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& light, const Mat4& lightViewProjection, const ShadowMap& shadowMap)
+{
+    const Vec4 lightClip = lightViewProjection * Vec4 { worldPosition.x, worldPosition.y, worldPosition.z, 1.0f };
+    if (std::abs(lightClip.w) <= 0.000001f) {
+        return 1.0f;
+    }
+
+    const float invW = 1.0f / lightClip.w;
+    const float ndcX = lightClip.x * invW;
+    const float ndcY = lightClip.y * invW;
+    const float ndcZ = lightClip.z * invW;
+    if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f || ndcZ < -1.0f || ndcZ > 1.0f) {
+        return 1.0f;
+    }
+
+    const float sx = (ndcX * 0.5f + 0.5f) * static_cast<float>(shadowMap.width - 1);
+    const float sy = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(shadowMap.height - 1);
+    const int ix = static_cast<int>(std::round(sx));
+    const int iy = static_cast<int>(std::round(sy));
+
+    const float slopeBias = 0.01f * (1.0f - std::max(0.0f, dot(normalize(normal), normalize(light.direction))));
+    const float bias = std::max(0.0035f, slopeBias);
+    const float closestDepth = shadowMap.sample(ix, iy);
+    return ndcZ > closestDepth + bias ? 0.35f : 1.0f;
+}
+
 } // namespace
+
+ShadowMap::ShadowMap()
+    : depth(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), std::numeric_limits<float>::infinity())
+{
+}
+
+void ShadowMap::clear()
+{
+    std::fill(depth.begin(), depth.end(), std::numeric_limits<float>::infinity());
+}
+
+bool ShadowMap::setIfCloser(int x, int y, float value)
+{
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+        return false;
+    }
+
+    const std::size_t index = static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+    if (value >= depth[index]) {
+        return false;
+    }
+
+    depth[index] = value;
+    return true;
+}
+
+float ShadowMap::sample(int x, int y) const
+{
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+        return std::numeric_limits<float>::infinity();
+    }
+
+    return depth[static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)];
+}
 
 void Renderer::render(const TestScene& scene, const Camera& camera, Framebuffer& framebuffer)
 {
     framebuffer.clear({ 18, 20, 28, 255 });
 
+    const DirectionalLight light = sceneLight();
+    const Mat4 lightViewProjection = sceneLightViewProjection(light);
+    ShadowMap shadowMap;
+    renderShadowMap(scene, lightViewProjection, shadowMap);
+
     const Mat4 view = camera.viewMatrix();
     const Mat4 projection = camera.projectionMatrix(framebuffer.width(), framebuffer.height());
     for (const DrawCommand& command : scene.drawCommands()) {
-        draw(command, view, projection, framebuffer);
+        draw(command, view, projection, lightViewProjection, shadowMap, framebuffer);
     }
 }
 
-void Renderer::draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, Framebuffer& framebuffer)
+void Renderer::draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer)
 {
     if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
         return;
     }
 
     for (int i = 0; i + 2 < command.mesh.vertexCount; i += 3) {
-        drawTriangle(command, command.mesh.vertices + i, view, projection, framebuffer);
+        drawTriangle(command, command.mesh.vertices + i, view, projection, lightViewProjection, shadowMap, framebuffer);
     }
 }
 
-void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& view, const Mat4& projection, Framebuffer& framebuffer)
+void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer)
 {
     const Mat4 modelView = view * command.transform;
     const Mat4 mvp = projection * modelView;
-    const DirectionalLight light {
-        normalize({ -0.45f, -0.55f, 1.0f }),
-        { 255, 244, 224, 255 },
-        0.8f,
-    };
+    const DirectionalLight light = sceneLight();
     constexpr float ambient = 0.24f;
     constexpr float specularStrength = 0.48f;
     constexpr float shininess = 48.0f;
@@ -136,6 +221,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
 
     for (int i = 0; i < 3; ++i) {
         const Vertex& vertex = vertices[i];
+        const Vec4 worldPosition = command.transform * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 viewPosition = modelView * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
 
@@ -155,6 +241,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
             },
             ndcZ,
             invW,
+            { worldPosition.x * invW, worldPosition.y * invW, worldPosition.z * invW },
             { viewPosition.x * invW, viewPosition.y * invW, viewPosition.z * invW },
             { vertex.uv.x * invW, vertex.uv.y * invW },
             transformDirection(modelView, vertex.normal) * invW,
@@ -197,6 +284,11 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                 (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
                 (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
             };
+            const Vec3 worldPosition = {
+                (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
+                (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
+                (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
+            };
             const Vec3 viewPosition = {
                 (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
                 (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
@@ -212,9 +304,80 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
             if (command.texture) {
                 color = modulate(command.texture->sample(uv), color);
             }
-            color = applyLighting(color, normal, viewPosition, light, ambient, specularStrength, shininess);
+            const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+            color = applyLighting(color, normal, viewPosition, light, ambient, specularStrength, shininess, shadow);
 
             framebuffer.setPixelIfCloser(x, y, depth, color);
+        }
+    }
+}
+
+void Renderer::renderShadowMap(const TestScene& scene, const Mat4& lightViewProjection, ShadowMap& shadowMap)
+{
+    shadowMap.clear();
+    for (const DrawCommand& command : scene.drawCommands()) {
+        if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
+            continue;
+        }
+
+        for (int i = 0; i + 2 < command.mesh.vertexCount; i += 3) {
+            drawShadowTriangle(command, command.mesh.vertices + i, lightViewProjection, shadowMap);
+        }
+    }
+}
+
+void Renderer::drawShadowTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& lightViewProjection, ShadowMap& shadowMap)
+{
+    const Mat4 lightMvp = lightViewProjection * command.transform;
+    ShadowVertex screen[3] = {};
+
+    for (int i = 0; i < 3; ++i) {
+        const Vertex& vertex = vertices[i];
+        const Vec4 clip = lightMvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
+        if (std::abs(clip.w) <= 0.000001f) {
+            return;
+        }
+
+        const float invW = 1.0f / clip.w;
+        const float ndcX = clip.x * invW;
+        const float ndcY = clip.y * invW;
+        const float ndcZ = clip.z * invW;
+
+        screen[i] = {
+            {
+                (ndcX * 0.5f + 0.5f) * static_cast<float>(shadowMap.width - 1),
+                (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(shadowMap.height - 1),
+            },
+            ndcZ,
+        };
+    }
+
+    const Vec2 p0 = screen[0].position;
+    const Vec2 p1 = screen[1].position;
+    const Vec2 p2 = screen[2].position;
+    const float area = edge(p0, p1, p2);
+    if (std::abs(area) <= 0.000001f) {
+        return;
+    }
+
+    const int minX = std::max(0, static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))));
+    const int maxX = std::min(shadowMap.width - 1, static_cast<int>(std::ceil(std::max({ p0.x, p1.x, p2.x }))));
+    const int minY = std::max(0, static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))));
+    const int maxY = std::min(shadowMap.height - 1, static_cast<int>(std::ceil(std::max({ p0.y, p1.y, p2.y }))));
+
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
+            const Vec2 sample { static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f };
+            const float w0 = edge(p1, p2, sample) / area;
+            const float w1 = edge(p2, p0, sample) / area;
+            const float w2 = edge(p0, p1, sample) / area;
+
+            if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) {
+                continue;
+            }
+
+            const float depth = screen[0].depth * w0 + screen[1].depth * w1 + screen[2].depth * w2;
+            shadowMap.setIfCloser(x, y, depth);
         }
     }
 }

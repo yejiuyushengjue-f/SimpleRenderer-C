@@ -18,8 +18,9 @@ A small software renderer for learning the classic CPU rendering pipeline.
 - Perspective-correct interpolation for UVs, normals, and view-space position.
 - Pixel shading with texture color multiplied by vertex color.
 - Lighting model with ambient light, directional Lambert diffuse, and Blinn-Phong specular highlights.
+- Shadow mapping for the directional light using a CPU-generated light-space depth map.
 - Procedural 3D mesh generation for a UV sphere and a textured cube.
-- Test scene with a textured sphere in front of a textured cube to demonstrate depth, perspective correction, texture mapping, and lighting.
+- Test scene with a textured sphere in front of a textured cube to demonstrate depth, perspective correction, texture mapping, lighting, and shadows.
 
 ## Assets
 

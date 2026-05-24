@@ -127,6 +127,40 @@ struct Mat4 {
         result.m[3][2] = -1.0f;
         return result;
     }
+
+    static Mat4 orthographic(float left, float right, float bottom, float top, float nearPlane, float farPlane)
+    {
+        Mat4 result = identity();
+        result.m[0][0] = 2.0f / (right - left);
+        result.m[1][1] = 2.0f / (top - bottom);
+        result.m[2][2] = -2.0f / (farPlane - nearPlane);
+        result.m[0][3] = -(right + left) / (right - left);
+        result.m[1][3] = -(top + bottom) / (top - bottom);
+        result.m[2][3] = -(farPlane + nearPlane) / (farPlane - nearPlane);
+        return result;
+    }
+
+    static Mat4 lookAt(Vec3 eye, Vec3 target, Vec3 up)
+    {
+        const Vec3 f = normalize(target - eye);
+        const Vec3 r = normalize(cross(f, up));
+        const Vec3 u = cross(r, f);
+
+        Mat4 result = identity();
+        result.m[0][0] = r.x;
+        result.m[0][1] = r.y;
+        result.m[0][2] = r.z;
+        result.m[0][3] = -dot(r, eye);
+        result.m[1][0] = u.x;
+        result.m[1][1] = u.y;
+        result.m[1][2] = u.z;
+        result.m[1][3] = -dot(u, eye);
+        result.m[2][0] = -f.x;
+        result.m[2][1] = -f.y;
+        result.m[2][2] = -f.z;
+        result.m[2][3] = dot(f, eye);
+        return result;
+    }
 };
 
 inline Mat4 operator*(const Mat4& lhs, const Mat4& rhs)
