@@ -93,6 +93,27 @@ bool Win32Window::processMessages()
     return true;
 }
 
+InputState Win32Window::inputState() const
+{
+    const auto keyDown = [](int key) {
+        return (GetAsyncKeyState(key) & 0x8000) != 0;
+    };
+
+    return {
+        keyDown('W'),
+        keyDown('S'),
+        keyDown('A'),
+        keyDown('D'),
+        keyDown('E') || keyDown(VK_SPACE),
+        keyDown('Q') || keyDown(VK_CONTROL),
+        keyDown(VK_LEFT),
+        keyDown(VK_RIGHT),
+        keyDown(VK_UP),
+        keyDown(VK_DOWN),
+        keyDown(VK_SHIFT),
+    };
+}
+
 void Win32Window::present(const Framebuffer& framebuffer)
 {
     StretchDIBits(
@@ -135,6 +156,11 @@ Win32Window::~Win32Window() = default;
 bool Win32Window::processMessages()
 {
     return false;
+}
+
+InputState Win32Window::inputState() const
+{
+    return {};
 }
 
 void Win32Window::present(const Framebuffer&)

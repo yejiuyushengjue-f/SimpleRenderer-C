@@ -132,10 +132,4 @@ void TestScene::update(float deltaSeconds)
         * Mat4::rotationZ(0.18f);
 }
 
-Mat4 TestScene::viewProjection(int width, int height) const
-{
-    const float aspect = static_cast<float>(width) / static_cast<float>(height);
-    return Mat4::perspective(radians(65.0f), aspect, 0.1f, 100.0f);
-}
-
 } // namespace sr

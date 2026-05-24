@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(SimpleRenderer WIN32
     src/main.cpp
     src/core/Application.cpp
+    src/core/Camera.cpp
     src/core/Framebuffer.cpp
     src/platform/Win32Window.cpp
     src/renderer/Renderer.cpp

@@ -14,7 +14,6 @@ public:
     TestScene();
 
     void update(float deltaSeconds);
-    Mat4 viewProjection(int width, int height) const;
     std::span<const DrawCommand> drawCommands() const { return commands_; }
 
 private:

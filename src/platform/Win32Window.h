@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Framebuffer.h"
+#include "platform/InputState.h"
 
 #include <string>
 
@@ -16,6 +17,7 @@ public:
     ~Win32Window();
 
     bool processMessages();
+    InputState inputState() const;
     void present(const Framebuffer& framebuffer);
 
 private:

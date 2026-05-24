@@ -97,30 +97,32 @@ Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
 
 } // namespace
 
-void Renderer::render(const TestScene& scene, Framebuffer& framebuffer)
+void Renderer::render(const TestScene& scene, const Camera& camera, Framebuffer& framebuffer)
 {
     framebuffer.clear({ 18, 20, 28, 255 });
 
-    const Mat4 viewProjection = scene.viewProjection(framebuffer.width(), framebuffer.height());
+    const Mat4 view = camera.viewMatrix();
+    const Mat4 projection = camera.projectionMatrix(framebuffer.width(), framebuffer.height());
     for (const DrawCommand& command : scene.drawCommands()) {
-        draw(command, viewProjection, framebuffer);
+        draw(command, view, projection, framebuffer);
     }
 }
 
-void Renderer::draw(const DrawCommand& command, const Mat4& viewProjection, Framebuffer& framebuffer)
+void Renderer::draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, Framebuffer& framebuffer)
 {
     if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
         return;
     }
 
     for (int i = 0; i + 2 < command.mesh.vertexCount; i += 3) {
-        drawTriangle(command, command.mesh.vertices + i, viewProjection, framebuffer);
+        drawTriangle(command, command.mesh.vertices + i, view, projection, framebuffer);
     }
 }
 
-void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& viewProjection, Framebuffer& framebuffer)
+void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& view, const Mat4& projection, Framebuffer& framebuffer)
 {
-    const Mat4 mvp = viewProjection * command.transform;
+    const Mat4 modelView = view * command.transform;
+    const Mat4 mvp = projection * modelView;
     const DirectionalLight light {
         normalize({ -0.45f, -0.55f, 1.0f }),
         { 255, 244, 224, 255 },
@@ -134,7 +136,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
 
     for (int i = 0; i < 3; ++i) {
         const Vertex& vertex = vertices[i];
-        const Vec4 viewPosition = command.transform * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
+        const Vec4 viewPosition = modelView * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
 
         if (clip.w <= 0.000001f) {
@@ -155,7 +157,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
             invW,
             { viewPosition.x * invW, viewPosition.y * invW, viewPosition.z * invW },
             { vertex.uv.x * invW, vertex.uv.y * invW },
-            transformDirection(command.transform, vertex.normal) * invW,
+            transformDirection(modelView, vertex.normal) * invW,
             vertex.color,
         };
     }
