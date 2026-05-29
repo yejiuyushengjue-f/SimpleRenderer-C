@@ -175,7 +175,7 @@ void TestScene::update(float deltaSeconds)
     rotation_ += deltaSeconds;
     commands_[0].transform = Mat4::translation({ -0.52f, 0.02f, -2.25f })
         * Mat4::rotationY(rotation_ * (usingObjModel_ ? 0.45f : 0.65f))
-        * Mat4::rotationX(usingObjModel_ ? radians(-90.0f) : std::sin(rotation_ * 0.7f) * 0.18f);
+        * Mat4::rotationX(usingObjModel_ ? 0.0f : std::sin(rotation_ * 0.7f) * 0.18f);
     commands_[1].transform = Mat4::translation({ 0.58f, -0.02f, -3.75f })
         * Mat4::rotationY(-rotation_ * 0.45f)
         * Mat4::rotationX(0.45f)

@@ -18,10 +18,10 @@ A small software renderer for learning the classic CPU rendering pipeline.
 - Generated checkerboard fallback textures when image files cannot be found or decoded.
 - Perspective-correct interpolation for UVs, normals, and view-space position.
 - Pixel shading with texture color multiplied by vertex color.
-- Lighting model with ambient light, directional Lambert diffuse, and Blinn-Phong specular highlights.
-- Shadow mapping for the directional light using a CPU-generated light-space depth map.
+- Multi-light shading with ambient light, multiple directional lights, point lights, Lambert diffuse, and Blinn-Phong specular highlights.
+- Shadow mapping for the primary directional light using a CPU-generated light-space depth map.
 - Procedural 3D mesh generation for a UV sphere and a textured cube.
-- Test scene that loads the first OBJ model found under `res/Model` or `res/Models`; if none is found, it falls back to a textured sphere in front of a textured cube.
+- Test scene that loads the first OBJ model found under `res/Model` or `res/Models`, faces it toward the initial camera view, and keeps it rotating horizontally; if none is found, it falls back to a textured sphere in front of a textured cube.
 
 ## Assets
 
@@ -65,4 +65,4 @@ cmake --build build --config Release
 .\build\Release\SimpleRenderer.exe
 ```
 
-The renderer is CPU-only. High-polygon OBJ files and shadow mapping are expensive in Debug builds, so the OBJ loader samples very large models down to a default triangle budget for smoother navigation.
+The renderer is CPU-only. High-polygon OBJ files and shadow mapping are expensive in Debug builds, so use the Release build for smoother navigation with complex models.

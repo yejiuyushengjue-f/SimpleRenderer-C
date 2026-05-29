@@ -4,6 +4,7 @@
 #include "renderer/Texture.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -31,6 +32,18 @@ struct DirectionalLight {
     Vec3 direction;
     Color color;
     float intensity = 1.0f;
+};
+
+struct PointLight {
+    Vec3 position;
+    Color color;
+    float intensity = 1.0f;
+    float range = 1.0f;
+};
+
+struct ViewLightSet {
+    std::array<DirectionalLight, 3> directionalLights;
+    std::array<PointLight, 2> pointLights;
 };
 
 float edge(Vec2 a, Vec2 b, Vec2 p)
@@ -77,23 +90,78 @@ Color scaleColor(Color color, float scale)
     };
 }
 
-Color applyLighting(Color albedo, Vec3 normal, Vec3 viewPosition, const DirectionalLight& light, float ambient, float specularStrength, float shininess, float shadow)
+Color addLight(Color current, Color lightColor, float diffuse, float specular, Color albedo)
 {
-    const Vec3 n = normalize(normal);
-    const Vec3 lightToSurface = normalize(light.direction);
-    const Vec3 viewDirection = normalize({ -viewPosition.x, -viewPosition.y, -viewPosition.z });
-    const Vec3 halfVector = normalize(lightToSurface + viewDirection);
-
-    const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity;
-    const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity;
-
-    const Color litDiffuse = modulate(scaleColor(albedo, ambient + diffuse * shadow), light.color);
     return {
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.r) + static_cast<float>(light.color.r) * specular * shadow, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.g) + static_cast<float>(light.color.g) * specular * shadow, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(litDiffuse.b) + static_cast<float>(light.color.b) * specular * shadow, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(
+            static_cast<float>(current.r)
+                + static_cast<float>(albedo.r) * (static_cast<float>(lightColor.r) / 255.0f) * diffuse
+                + static_cast<float>(lightColor.r) * specular,
+            0.0f,
+            255.0f)),
+        static_cast<std::uint8_t>(std::clamp(
+            static_cast<float>(current.g)
+                + static_cast<float>(albedo.g) * (static_cast<float>(lightColor.g) / 255.0f) * diffuse
+                + static_cast<float>(lightColor.g) * specular,
+            0.0f,
+            255.0f)),
+        static_cast<std::uint8_t>(std::clamp(
+            static_cast<float>(current.b)
+                + static_cast<float>(albedo.b) * (static_cast<float>(lightColor.b) / 255.0f) * diffuse
+                + static_cast<float>(lightColor.b) * specular,
+            0.0f,
+            255.0f)),
         albedo.a,
     };
+}
+
+Color applyLighting(
+    Color albedo,
+    Vec3 normal,
+    Vec3 viewPosition,
+    const ViewLightSet& lights,
+    float ambient,
+    float specularStrength,
+    float shininess,
+    float primaryShadow)
+{
+    const Vec3 n = normalize(normal);
+    const Vec3 viewDirection = normalize({ -viewPosition.x, -viewPosition.y, -viewPosition.z });
+
+    Color result {
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.r) * ambient, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.g) * ambient, 0.0f, 255.0f)),
+        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.b) * ambient, 0.0f, 255.0f)),
+        albedo.a,
+    };
+
+    for (std::size_t i = 0; i < lights.directionalLights.size(); ++i) {
+        const DirectionalLight& light = lights.directionalLights[i];
+        const float shadow = i == 0 ? primaryShadow : 1.0f;
+        const Vec3 lightToSurface = normalize(light.direction);
+        const Vec3 halfVector = normalize(lightToSurface + viewDirection);
+        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity * shadow;
+        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity * shadow;
+        result = addLight(result, light.color, diffuse, specular, albedo);
+    }
+
+    for (const PointLight& light : lights.pointLights) {
+        const Vec3 toLight = light.position - viewPosition;
+        const float distanceSquared = std::max(0.0001f, dot(toLight, toLight));
+        const float distance = std::sqrt(distanceSquared);
+        const float attenuation = std::clamp(1.0f - distance / light.range, 0.0f, 1.0f);
+        if (attenuation <= 0.0f) {
+            continue;
+        }
+
+        const Vec3 lightToSurface = toLight / distance;
+        const Vec3 halfVector = normalize(lightToSurface + viewDirection);
+        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity * attenuation * attenuation;
+        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity * attenuation * attenuation;
+        result = addLight(result, light.color, diffuse, specular, albedo);
+    }
+
+    return result;
 }
 
 Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
@@ -108,6 +176,33 @@ DirectionalLight sceneLight()
         normalize({ -0.45f, -0.55f, 1.0f }),
         { 255, 244, 224, 255 },
         0.8f,
+    };
+}
+
+ViewLightSet sceneLightsInView(const Mat4& view)
+{
+    const DirectionalLight primary = sceneLight();
+
+    return {
+        {
+            DirectionalLight { transformDirection(view, primary.direction), primary.color, primary.intensity },
+            DirectionalLight { transformDirection(view, normalize({ 0.75f, 0.35f, 0.25f })), { 135, 178, 255, 255 }, 0.28f },
+            DirectionalLight { transformDirection(view, normalize({ -0.2f, 0.85f, -0.45f })), { 255, 145, 112, 255 }, 0.18f },
+        },
+        {
+            PointLight {
+                { (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).x, (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).y, (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).z },
+                { 255, 205, 150, 255 },
+                0.75f,
+                3.0f,
+            },
+            PointLight {
+                { (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).x, (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).y, (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).z },
+                { 120, 210, 255, 255 },
+                0.55f,
+                2.4f,
+            },
+        },
     };
 }
 
@@ -214,6 +309,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
     const Mat4 modelView = view * command.transform;
     const Mat4 mvp = projection * modelView;
     const DirectionalLight light = sceneLight();
+    const ViewLightSet lights = sceneLightsInView(view);
     constexpr float ambient = 0.24f;
     constexpr float specularStrength = 0.48f;
     constexpr float shininess = 48.0f;
@@ -306,7 +402,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                 color = modulate(command.texture->sample(uv), color);
             }
             const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
-            color = applyLighting(color, normal, viewPosition, light, ambient, specularStrength, shininess, shadow);
+            color = applyLighting(color, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
 
             framebuffer.setPixelIfCloser(x, y, depth, color);
         }
