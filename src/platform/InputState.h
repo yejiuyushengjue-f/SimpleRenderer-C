@@ -14,6 +14,9 @@ struct InputState {
     bool lookUp = false;
     bool lookDown = false;
     bool speedBoost = false;
+    bool mouseLook = false;
+    float mouseDeltaX = 0.0f;
+    float mouseDeltaY = 0.0f;
 };
 
 } // namespace sr

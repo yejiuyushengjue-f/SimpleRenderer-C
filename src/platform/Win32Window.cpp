@@ -93,11 +93,28 @@ bool Win32Window::processMessages()
     return true;
 }
 
-InputState Win32Window::inputState() const
+InputState Win32Window::inputState()
 {
     const auto keyDown = [](int key) {
         return (GetAsyncKeyState(key) & 0x8000) != 0;
     };
+
+    const bool mouseLook = GetForegroundWindow() == hwnd_ && keyDown(VK_RBUTTON);
+    float mouseDeltaX = 0.0f;
+    float mouseDeltaY = 0.0f;
+
+    POINT mousePosition = {};
+    if (GetCursorPos(&mousePosition)) {
+        ScreenToClient(hwnd_, &mousePosition);
+        if (mouseLook && hasLastMousePosition_) {
+            mouseDeltaX = static_cast<float>(mousePosition.x - lastMousePosition_.x);
+            mouseDeltaY = static_cast<float>(mousePosition.y - lastMousePosition_.y);
+        }
+        lastMousePosition_ = mousePosition;
+        hasLastMousePosition_ = true;
+    } else {
+        hasLastMousePosition_ = false;
+    }
 
     return {
         keyDown('W'),
@@ -111,6 +128,9 @@ InputState Win32Window::inputState() const
         keyDown(VK_UP),
         keyDown(VK_DOWN),
         keyDown(VK_SHIFT),
+        mouseLook,
+        mouseDeltaX,
+        mouseDeltaY,
     };
 }
 
@@ -158,7 +178,7 @@ bool Win32Window::processMessages()
     return false;
 }
 
-InputState Win32Window::inputState() const
+InputState Win32Window::inputState()
 {
     return {};
 }

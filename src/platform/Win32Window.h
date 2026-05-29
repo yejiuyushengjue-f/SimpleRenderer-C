@@ -17,7 +17,7 @@ public:
     ~Win32Window();
 
     bool processMessages();
-    InputState inputState() const;
+    InputState inputState();
     void present(const Framebuffer& framebuffer);
 
 private:
@@ -27,6 +27,8 @@ private:
     HWND hwnd_ = nullptr;
     HDC deviceContext_ = nullptr;
     BITMAPINFO bitmapInfo_ = {};
+    POINT lastMousePosition_ = {};
+    bool hasLastMousePosition_ = false;
 #endif
 };
 

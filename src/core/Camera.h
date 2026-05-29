@@ -22,6 +22,7 @@ private:
     float pitch_ = 0.0f;
     float moveSpeed_ = 2.4f;
     float lookSpeed_ = 1.65f;
+    float mouseSensitivity_ = 0.0024f;
     float fovYRadians_ = radians(65.0f);
     float nearPlane_ = 0.1f;
     float farPlane_ = 100.0f;

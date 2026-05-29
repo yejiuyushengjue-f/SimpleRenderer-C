@@ -20,6 +20,10 @@ void Camera::update(const InputState& input, float deltaSeconds)
     if (input.lookDown) {
         pitch_ -= lookStep;
     }
+    if (input.mouseLook) {
+        yaw_ += input.mouseDeltaX * mouseSensitivity_;
+        pitch_ -= input.mouseDeltaY * mouseSensitivity_;
+    }
 
     pitch_ = std::clamp(pitch_, radians(-86.0f), radians(86.0f));
 
