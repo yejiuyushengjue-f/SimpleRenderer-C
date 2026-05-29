@@ -512,7 +512,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
         const Vec2 p2 = screen[2].position;
         const float area = edge(p0, p1, p2);
 
-        if (area >= -0.000001f) {
+        if (area <= 0.000001f) {
             continue;
         }
 
