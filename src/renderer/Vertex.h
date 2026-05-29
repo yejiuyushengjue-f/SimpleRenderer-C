@@ -22,6 +22,7 @@ struct Mesh {
 struct DrawCommand {
     Mesh mesh;
     const Texture* texture = nullptr;
+    bool castsShadow = true;
     Mat4 transform = Mat4::identity();
 };
 

@@ -11,11 +11,11 @@ namespace sr {
 class TestScene;
 
 struct ShadowMap {
-    int width = 1024;
-    int height = 1024;
+    int width = 512;
+    int height = 512;
     std::vector<float> depth;
 
-    ShadowMap();
+    ShadowMap(int width = 512, int height = 512);
     void clear();
     bool setIfCloser(int x, int y, float value);
     float sample(int x, int y) const;
@@ -26,6 +26,8 @@ public:
     void render(const TestScene& scene, const Camera& camera, Framebuffer& framebuffer);
 
 private:
+    ShadowMap shadowMap_;
+
     void draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer);
     void drawTriangle(
         const DrawCommand& command,

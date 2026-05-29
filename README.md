@@ -57,3 +57,12 @@ cmake --build build
 ```
 
 If your generator creates a different config folder, use the path printed by CMake.
+
+For interactive testing, prefer the optimized Release build:
+
+```powershell
+cmake --build build --config Release
+.\build\Release\SimpleRenderer.exe
+```
+
+The renderer is CPU-only. High-polygon OBJ files and shadow mapping are expensive in Debug builds, so the OBJ loader samples very large models down to a default triangle budget for smoother navigation.

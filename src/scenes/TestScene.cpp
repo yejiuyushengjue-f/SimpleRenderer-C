@@ -164,8 +164,10 @@ TestScene::TestScene()
 {
     commands_[0].mesh = Mesh { modelMesh_.data(), static_cast<int>(modelMesh_.size()) };
     commands_[0].texture = &modelTexture_;
+    commands_[0].castsShadow = !usingObjModel_;
     commands_[1].mesh = Mesh { cubeMesh_.data(), static_cast<int>(cubeMesh_.size()) };
     commands_[1].texture = &cubeTexture_;
+    commands_[1].castsShadow = true;
 }
 
 void TestScene::update(float deltaSeconds)

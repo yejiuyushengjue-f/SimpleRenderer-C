@@ -147,8 +147,10 @@ float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& ligh
 
 } // namespace
 
-ShadowMap::ShadowMap()
-    : depth(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), std::numeric_limits<float>::infinity())
+ShadowMap::ShadowMap(int mapWidth, int mapHeight)
+    : width(mapWidth)
+    , height(mapHeight)
+    , depth(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), std::numeric_limits<float>::infinity())
 {
 }
 
@@ -187,13 +189,12 @@ void Renderer::render(const TestScene& scene, const Camera& camera, Framebuffer&
 
     const DirectionalLight light = sceneLight();
     const Mat4 lightViewProjection = sceneLightViewProjection(light);
-    ShadowMap shadowMap;
-    renderShadowMap(scene, lightViewProjection, shadowMap);
+    renderShadowMap(scene, lightViewProjection, shadowMap_);
 
     const Mat4 view = camera.viewMatrix();
     const Mat4 projection = camera.projectionMatrix(framebuffer.width(), framebuffer.height());
     for (const DrawCommand& command : scene.drawCommands()) {
-        draw(command, view, projection, lightViewProjection, shadowMap, framebuffer);
+        draw(command, view, projection, lightViewProjection, shadowMap_, framebuffer);
     }
 }
 
@@ -316,7 +317,7 @@ void Renderer::renderShadowMap(const TestScene& scene, const Mat4& lightViewProj
 {
     shadowMap.clear();
     for (const DrawCommand& command : scene.drawCommands()) {
-        if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
+        if (!command.castsShadow || !command.mesh.vertices || command.mesh.vertexCount < 3) {
             continue;
         }
 
