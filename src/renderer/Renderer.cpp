@@ -23,6 +23,20 @@ struct ScreenVertex {
     Color color;
 };
 
+struct ClipVertex {
+    Vec4 clip;
+    Vec3 worldPosition;
+    Vec3 viewPosition;
+    Vec2 uv;
+    Vec3 normal;
+    Color color;
+};
+
+struct ClipPolygon {
+    std::array<ClipVertex, 12> vertices;
+    int count = 0;
+};
+
 struct ShadowVertex {
     Vec2 position;
     float depth = 0.0f;
@@ -49,6 +63,154 @@ struct ViewLightSet {
 float edge(Vec2 a, Vec2 b, Vec2 p)
 {
     return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+}
+
+float clipDistance(const ClipVertex& vertex, int plane)
+{
+    switch (plane) {
+    case 0:
+        return vertex.clip.x + vertex.clip.w;
+    case 1:
+        return vertex.clip.w - vertex.clip.x;
+    case 2:
+        return vertex.clip.y + vertex.clip.w;
+    case 3:
+        return vertex.clip.w - vertex.clip.y;
+    case 4:
+        return vertex.clip.z + vertex.clip.w;
+    default:
+        return vertex.clip.w - vertex.clip.z;
+    }
+}
+
+Color lerpColor(Color a, Color b, float t)
+{
+    const auto lerpChannel = [t](std::uint8_t av, std::uint8_t bv) {
+        return static_cast<std::uint8_t>(std::clamp(
+            static_cast<float>(av) + (static_cast<float>(bv) - static_cast<float>(av)) * t,
+            0.0f,
+            255.0f));
+    };
+
+    return {
+        lerpChannel(a.r, b.r),
+        lerpChannel(a.g, b.g),
+        lerpChannel(a.b, b.b),
+        lerpChannel(a.a, b.a),
+    };
+}
+
+ClipVertex lerpClipVertex(const ClipVertex& a, const ClipVertex& b, float t)
+{
+    const auto lerpFloat = [t](float av, float bv) {
+        return av + (bv - av) * t;
+    };
+
+    return {
+        {
+            lerpFloat(a.clip.x, b.clip.x),
+            lerpFloat(a.clip.y, b.clip.y),
+            lerpFloat(a.clip.z, b.clip.z),
+            lerpFloat(a.clip.w, b.clip.w),
+        },
+        {
+            lerpFloat(a.worldPosition.x, b.worldPosition.x),
+            lerpFloat(a.worldPosition.y, b.worldPosition.y),
+            lerpFloat(a.worldPosition.z, b.worldPosition.z),
+        },
+        {
+            lerpFloat(a.viewPosition.x, b.viewPosition.x),
+            lerpFloat(a.viewPosition.y, b.viewPosition.y),
+            lerpFloat(a.viewPosition.z, b.viewPosition.z),
+        },
+        {
+            lerpFloat(a.uv.x, b.uv.x),
+            lerpFloat(a.uv.y, b.uv.y),
+        },
+        normalize({
+            lerpFloat(a.normal.x, b.normal.x),
+            lerpFloat(a.normal.y, b.normal.y),
+            lerpFloat(a.normal.z, b.normal.z),
+        }),
+        lerpColor(a.color, b.color, t),
+    };
+}
+
+ClipPolygon clipPolygonAgainstPlane(const ClipPolygon& input, int plane)
+{
+    ClipPolygon output;
+    if (input.count == 0) {
+        return output;
+    }
+
+    ClipVertex previous = input.vertices[static_cast<std::size_t>(input.count - 1)];
+    float previousDistance = clipDistance(previous, plane);
+    bool previousInside = previousDistance >= 0.0f;
+
+    for (int i = 0; i < input.count; ++i) {
+        const ClipVertex& current = input.vertices[static_cast<std::size_t>(i)];
+        const float currentDistance = clipDistance(current, plane);
+        const bool currentInside = currentDistance >= 0.0f;
+
+        if (currentInside != previousInside) {
+            const float denominator = previousDistance - currentDistance;
+            const float t = std::abs(denominator) <= 0.000001f ? 0.0f : previousDistance / denominator;
+            if (output.count < static_cast<int>(output.vertices.size())) {
+                output.vertices[static_cast<std::size_t>(output.count++)] = lerpClipVertex(previous, current, t);
+            }
+        }
+
+        if (currentInside && output.count < static_cast<int>(output.vertices.size())) {
+            output.vertices[static_cast<std::size_t>(output.count++)] = current;
+        }
+
+        previous = current;
+        previousDistance = currentDistance;
+        previousInside = currentInside;
+    }
+
+    return output;
+}
+
+ClipPolygon clipTriangleToFrustum(const ClipVertex* triangle)
+{
+    ClipPolygon polygon;
+    polygon.vertices[0] = triangle[0];
+    polygon.vertices[1] = triangle[1];
+    polygon.vertices[2] = triangle[2];
+    polygon.count = 3;
+
+    for (int plane = 0; plane < 6 && polygon.count > 0; ++plane) {
+        polygon = clipPolygonAgainstPlane(polygon, plane);
+    }
+    return polygon;
+}
+
+bool toScreenVertex(const ClipVertex& vertex, int width, int height, ScreenVertex& out)
+{
+    if (std::abs(vertex.clip.w) <= 0.000001f) {
+        return false;
+    }
+
+    const float invW = 1.0f / vertex.clip.w;
+    const float ndcX = vertex.clip.x * invW;
+    const float ndcY = vertex.clip.y * invW;
+    const float ndcZ = vertex.clip.z * invW;
+
+    out = {
+        {
+            (ndcX * 0.5f + 0.5f) * static_cast<float>(width - 1),
+            (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(height - 1),
+        },
+        ndcZ,
+        invW,
+        vertex.worldPosition * invW,
+        vertex.viewPosition * invW,
+        { vertex.uv.x * invW, vertex.uv.y * invW },
+        vertex.normal * invW,
+        vertex.color,
+    };
+    return true;
 }
 
 Color mixColor(Color a, Color b, Color c, float wa, float wb, float wc)
@@ -314,7 +476,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
     constexpr float specularStrength = 0.48f;
     constexpr float shininess = 48.0f;
 
-    ScreenVertex screen[3] = {};
+    ClipVertex clipTriangle[3] = {};
 
     for (int i = 0; i < 3; ++i) {
         const Vertex& vertex = vertices[i];
@@ -322,89 +484,89 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
         const Vec4 viewPosition = modelView * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
 
-        if (clip.w <= 0.000001f) {
-            return;
-        }
-
-        const float invW = 1.0f / clip.w;
-        const float ndcX = clip.x * invW;
-        const float ndcY = clip.y * invW;
-        const float ndcZ = clip.z * invW;
-
-        screen[i] = {
-            {
-                (ndcX * 0.5f + 0.5f) * static_cast<float>(framebuffer.width() - 1),
-                (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(framebuffer.height() - 1),
-            },
-            ndcZ,
-            invW,
-            { worldPosition.x * invW, worldPosition.y * invW, worldPosition.z * invW },
-            { viewPosition.x * invW, viewPosition.y * invW, viewPosition.z * invW },
-            { vertex.uv.x * invW, vertex.uv.y * invW },
-            transformDirection(modelView, vertex.normal) * invW,
+        clipTriangle[i] = {
+            clip,
+            { worldPosition.x, worldPosition.y, worldPosition.z },
+            { viewPosition.x, viewPosition.y, viewPosition.z },
+            vertex.uv,
+            transformDirection(modelView, vertex.normal),
             vertex.color,
         };
     }
 
-    const Vec2 p0 = screen[0].position;
-    const Vec2 p1 = screen[1].position;
-    const Vec2 p2 = screen[2].position;
-    const float area = edge(p0, p1, p2);
-
-    if (std::abs(area) <= 0.000001f) {
+    const ClipPolygon clippedPolygon = clipTriangleToFrustum(clipTriangle);
+    if (clippedPolygon.count < 3) {
         return;
     }
 
-    const int minX = std::max(0, static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))));
-    const int maxX = std::min(framebuffer.width() - 1, static_cast<int>(std::ceil(std::max({ p0.x, p1.x, p2.x }))));
-    const int minY = std::max(0, static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))));
-    const int maxY = std::min(framebuffer.height() - 1, static_cast<int>(std::ceil(std::max({ p0.y, p1.y, p2.y }))));
+    for (int i = 1; i + 1 < clippedPolygon.count; ++i) {
+        ScreenVertex screen[3] = {};
+        if (!toScreenVertex(clippedPolygon.vertices[0], framebuffer.width(), framebuffer.height(), screen[0])
+            || !toScreenVertex(clippedPolygon.vertices[static_cast<std::size_t>(i)], framebuffer.width(), framebuffer.height(), screen[1])
+            || !toScreenVertex(clippedPolygon.vertices[static_cast<std::size_t>(i + 1)], framebuffer.width(), framebuffer.height(), screen[2])) {
+            continue;
+        }
 
-    for (int y = minY; y <= maxY; ++y) {
-        for (int x = minX; x <= maxX; ++x) {
-            const Vec2 sample { static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f };
-            const float w0 = edge(p1, p2, sample) / area;
-            const float w1 = edge(p2, p0, sample) / area;
-            const float w2 = edge(p0, p1, sample) / area;
+        const Vec2 p0 = screen[0].position;
+        const Vec2 p1 = screen[1].position;
+        const Vec2 p2 = screen[2].position;
+        const float area = edge(p0, p1, p2);
 
-            if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) {
-                continue;
+        if (area >= -0.000001f) {
+            continue;
+        }
+
+        const int minX = std::max(0, static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))));
+        const int maxX = std::min(framebuffer.width() - 1, static_cast<int>(std::ceil(std::max({ p0.x, p1.x, p2.x }))));
+        const int minY = std::max(0, static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))));
+        const int maxY = std::min(framebuffer.height() - 1, static_cast<int>(std::ceil(std::max({ p0.y, p1.y, p2.y }))));
+
+        for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+                const Vec2 sample { static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f };
+                const float w0 = edge(p1, p2, sample) / area;
+                const float w1 = edge(p2, p0, sample) / area;
+                const float w2 = edge(p0, p1, sample) / area;
+
+                if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) {
+                    continue;
+                }
+
+                const float depth = screen[0].depth * w0 + screen[1].depth * w1 + screen[2].depth * w2;
+                const float interpolatedInvW = screen[0].invW * w0 + screen[1].invW * w1 + screen[2].invW * w2;
+                if (interpolatedInvW <= 0.000001f) {
+                    continue;
+                }
+
+                const Vec2 uv {
+                    (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
+                    (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
+                };
+                const Vec3 worldPosition = {
+                    (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
+                    (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
+                    (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
+                };
+                const Vec3 viewPosition = {
+                    (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
+                    (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
+                    (screen[0].viewPositionOverW.z * w0 + screen[1].viewPositionOverW.z * w1 + screen[2].viewPositionOverW.z * w2) / interpolatedInvW,
+                };
+                const Vec3 normal = {
+                    (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
+                    (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
+                    (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
+                };
+
+                Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+                if (command.texture) {
+                    color = modulate(command.texture->sample(uv), color);
+                }
+                const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+                color = applyLighting(color, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+
+                framebuffer.setPixelIfCloser(x, y, depth, color);
             }
-
-            const float depth = screen[0].depth * w0 + screen[1].depth * w1 + screen[2].depth * w2;
-            const float interpolatedInvW = screen[0].invW * w0 + screen[1].invW * w1 + screen[2].invW * w2;
-            if (interpolatedInvW <= 0.000001f) {
-                continue;
-            }
-
-            const Vec2 uv {
-                (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
-                (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
-            };
-            const Vec3 worldPosition = {
-                (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
-                (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
-                (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
-            };
-            const Vec3 viewPosition = {
-                (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
-                (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
-                (screen[0].viewPositionOverW.z * w0 + screen[1].viewPositionOverW.z * w1 + screen[2].viewPositionOverW.z * w2) / interpolatedInvW,
-            };
-            const Vec3 normal = {
-                (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
-                (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
-                (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
-            };
-
-            Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
-            if (command.texture) {
-                color = modulate(command.texture->sample(uv), color);
-            }
-            const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
-            color = applyLighting(color, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
-
-            framebuffer.setPixelIfCloser(x, y, depth, color);
         }
     }
 }

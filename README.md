@@ -1,54 +1,56 @@
 # SimpleRenderer
 
-A small software renderer for learning the classic CPU rendering pipeline.
+一个用于学习经典 CPU 渲染管线的简易软件渲染器。
 
-## Current Features
+## 当前功能
 
-- Win32 window and CPU-side BGRA framebuffer presentation.
-- Color buffer and depth buffer with per-pixel depth testing.
-- Basic math library: `Vec2`, `Vec3`, `Vec4`, `Mat4`, dot/cross/normalize, translation, X/Y/Z rotation, and perspective projection.
-- Main application loop with scene update, rendering, and framebuffer presentation.
-- Camera module with keyboard-controlled movement and view/projection matrix generation.
-- Draw-command based pipeline with mesh vertices, model transform, and optional texture binding.
-- Triangle-list mesh rendering; each mesh can contain many triangles.
-- Wavefront OBJ model loading with support for positions, UVs, normals, negative indices, and polygon triangulation.
-- Triangle rasterization using screen-space bounding boxes and barycentric coordinates.
-- Vertex attributes: position, UV, normal, and vertex color.
-- Texture mapping with JPEG loading through Windows Imaging Component.
-- Generated checkerboard fallback textures when image files cannot be found or decoded.
-- Perspective-correct interpolation for UVs, normals, and view-space position.
-- Pixel shading with texture color multiplied by vertex color.
-- Multi-light shading with ambient light, multiple directional lights, point lights, Lambert diffuse, and Blinn-Phong specular highlights.
-- Shadow mapping for the primary directional light using a CPU-generated light-space depth map.
-- Procedural 3D mesh generation for a UV sphere and a textured cube.
-- Test scene that loads the first OBJ model found under `res/Model` or `res/Models`, faces it toward the initial camera view, and keeps it rotating horizontally; if none is found, it falls back to a textured sphere in front of a textured cube.
+- Win32 窗口创建与 CPU 端 BGRA 像素缓冲区显示。
+- 颜色缓冲区和深度缓冲区，支持逐像素深度测试。
+- 基础数学库：`Vec2`、`Vec3`、`Vec4`、`Mat4`、点乘、叉乘、归一化、平移、X/Y/Z 旋转、透视投影和正交投影。
+- 主循环结构，包含场景更新、渲染和帧缓冲提交。
+- 摄像机模块，支持键盘控制移动和视角旋转，并生成 View/Projection 矩阵。
+- 基于 Draw Command 的基础管线结构，支持网格顶点、模型变换和可选纹理绑定。
+- 三角形列表网格渲染，每个网格可以包含多个三角形。
+- Wavefront OBJ 模型加载，支持位置、UV、法线、负索引和多边形三角化。
+- 背面剔除：在屏幕空间剔除背向摄像机的三角形，减少无效光栅化。
+- 视锥体裁剪：在齐次裁剪空间按左右、上下、近远六个平面裁剪三角形，跨越视锥边界的面会被保留并切分。
+- 使用屏幕空间包围盒和重心坐标进行三角形填充光栅化。
+- 顶点属性：位置、UV、法线和顶点颜色。
+- 纹理映射，支持通过 Windows Imaging Component 加载 JPEG 纹理。
+- 当图片不存在或解码失败时，自动生成棋盘格备用纹理。
+- 对 UV、法线、世界坐标和观察空间坐标进行透视校正插值。
+- 像素着色支持纹理颜色与顶点颜色相乘。
+- 多光源着色：环境光、多个方向光、点光源、Lambert 漫反射和 Blinn-Phong 高光。
+- 主方向光 Shadow Mapping，使用 CPU 生成的光源空间深度图。
+- 程序化三维网格：UV 球体和带纹理立方体。
+- 测试场景会加载 `res/Model` 或 `res/Models` 下找到的第一个 OBJ 模型，使其面向初始摄像机并保持水平旋转；如果没有 OBJ，则使用前方球体和后方立方体作为备用场景。
 
-## Assets
+## 资源
 
-The default scene looks for these texture files:
+默认场景会查找这些纹理文件：
 
 - `res/Texture/Frosted Metal Texture.jpeg`
 - `res/Texture/Brushed metal texture.jpeg`
 
-The renderer checks the current working directory and common parent paths used by build output folders. If an image exists but cannot be decoded, the scene falls back to a generated checkerboard texture instead of aborting startup.
+渲染器会从当前工作目录以及常见的构建输出父目录中查找资源。如果图片存在但无法解码，程序会退回到自动生成的棋盘格纹理，不会因为资源问题直接退出。
 
-OBJ models can be placed in either of these folders:
+OBJ 模型可以放在以下任意目录：
 
 - `res/Model`
 - `res/Models`
 
-The loader reads the first `.obj` file it finds, normalizes it to fit the scene, and uses the frosted metal texture as its material texture. Supported face formats include `v`, `v/vt`, `v//vn`, and `v/vt/vn`.
+加载器会读取找到的第一个 `.obj` 文件，将模型归一化到适合当前场景的尺寸，并使用磨砂金属纹理作为材质纹理。支持的面格式包括 `v`、`v/vt`、`v//vn` 和 `v/vt/vn`。
 
-## Controls
+## 操作
 
-- `W` / `S`: move forward and backward.
-- `A` / `D`: move left and right.
-- `Q` / `E`: move down and up.
-- `Space`: move up.
-- Arrow keys: look around.
-- `Shift`: hold to move faster.
+- `W` / `S`：前进和后退。
+- `A` / `D`：向左和向右移动。
+- `Q` / `E`：向下和向上移动。
+- `Space`：向上移动。
+- 方向键：旋转视角。
+- `Shift`：按住后加速移动。
 
-## Build
+## 构建与运行
 
 ```powershell
 cmake -S . -B build
@@ -56,13 +58,13 @@ cmake --build build
 .\build\Debug\SimpleRenderer.exe
 ```
 
-If your generator creates a different config folder, use the path printed by CMake.
+如果你的 CMake 生成器创建了不同的配置目录，请使用 CMake 输出中显示的可执行文件路径。
 
-For interactive testing, prefer the optimized Release build:
+交互测试复杂模型时，建议使用 Release 构建：
 
 ```powershell
 cmake --build build --config Release
 .\build\Release\SimpleRenderer.exe
 ```
 
-The renderer is CPU-only. High-polygon OBJ files and shadow mapping are expensive in Debug builds, so use the Release build for smoother navigation with complex models.
+本项目是纯 CPU 渲染器。高面数 OBJ、视锥体裁剪、背面剔除和 Shadow Mapping 都在 CPU 上完成，Debug 构建会明显更慢；查看复杂模型时请优先使用 Release 版本。
