@@ -18,9 +18,10 @@ public:
 
 private:
     float rotation_ = 0.0f;
-    Texture sphereTexture_;
+    bool usingObjModel_ = false;
+    Texture modelTexture_;
     Texture cubeTexture_;
-    std::vector<Vertex> sphereMesh_;
+    std::vector<Vertex> modelMesh_;
     std::vector<Vertex> cubeMesh_;
     std::array<DrawCommand, 2> commands_;
 };

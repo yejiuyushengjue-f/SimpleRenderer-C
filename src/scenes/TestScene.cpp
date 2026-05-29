@@ -1,6 +1,7 @@
 #include "scenes/TestScene.h"
 
 #include "math/Math.h"
+#include "renderer/ObjLoader.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -8,6 +9,8 @@
 namespace sr {
 
 namespace {
+
+std::vector<Vertex> makeSphereMesh(float radius, int latitudeSegments, int longitudeSegments);
 
 Texture loadTextureOrCheckerboard(const wchar_t* fileName, int checkerCells)
 {
@@ -29,6 +32,51 @@ Texture loadTextureOrCheckerboard(const wchar_t* fileName, int checkerCells)
     }
 
     return Texture::makeCheckerboard(128, 128, checkerCells);
+}
+
+std::filesystem::path findFirstObjFile()
+{
+    const std::filesystem::path candidates[] = {
+        std::filesystem::path(L"res") / L"Model",
+        std::filesystem::path(L"res") / L"Models",
+        std::filesystem::path(L"..") / L"res" / L"Model",
+        std::filesystem::path(L"..") / L"res" / L"Models",
+        std::filesystem::path(L"..") / L".." / L"res" / L"Model",
+        std::filesystem::path(L"..") / L".." / L"res" / L"Models",
+        std::filesystem::path(L"..") / L".." / L".." / L"res" / L"Model",
+        std::filesystem::path(L"..") / L".." / L".." / L"res" / L"Models",
+    };
+
+    for (const std::filesystem::path& directory : candidates) {
+        if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory)) {
+            continue;
+        }
+
+        for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(directory)) {
+            const std::filesystem::path extension = entry.path().extension();
+            if (entry.is_regular_file() && (extension == L".obj" || extension == L".OBJ")) {
+                return entry.path();
+            }
+        }
+    }
+
+    return {};
+}
+
+std::vector<Vertex> loadObjOrSphere(bool& usingObjModel)
+{
+    const std::filesystem::path objPath = findFirstObjFile();
+    if (!objPath.empty()) {
+        try {
+            usingObjModel = true;
+            return ObjLoader::load(objPath, { true, 0.95f, { 255, 255, 255, 255 } });
+        } catch (const std::runtime_error&) {
+            usingObjModel = false;
+        }
+    }
+
+    usingObjModel = false;
+    return makeSphereMesh(0.72f, 24, 48);
 }
 
 Vertex makeVertex(Vec3 position, Vec2 uv, Vec3 normal)
@@ -109,13 +157,13 @@ std::vector<Vertex> makeCubeMesh(float size)
 } // namespace
 
 TestScene::TestScene()
-    : sphereTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
+    : modelTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
-    , sphereMesh_(makeSphereMesh(0.72f, 24, 48))
+    , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
 {
-    commands_[0].mesh = Mesh { sphereMesh_.data(), static_cast<int>(sphereMesh_.size()) };
-    commands_[0].texture = &sphereTexture_;
+    commands_[0].mesh = Mesh { modelMesh_.data(), static_cast<int>(modelMesh_.size()) };
+    commands_[0].texture = &modelTexture_;
     commands_[1].mesh = Mesh { cubeMesh_.data(), static_cast<int>(cubeMesh_.size()) };
     commands_[1].texture = &cubeTexture_;
 }
@@ -124,8 +172,8 @@ void TestScene::update(float deltaSeconds)
 {
     rotation_ += deltaSeconds;
     commands_[0].transform = Mat4::translation({ -0.52f, 0.02f, -2.25f })
-        * Mat4::rotationY(rotation_ * 0.65f)
-        * Mat4::rotationX(std::sin(rotation_ * 0.7f) * 0.18f);
+        * Mat4::rotationY(rotation_ * (usingObjModel_ ? 0.45f : 0.65f))
+        * Mat4::rotationX(usingObjModel_ ? radians(-90.0f) : std::sin(rotation_ * 0.7f) * 0.18f);
     commands_[1].transform = Mat4::translation({ 0.58f, -0.02f, -3.75f })
         * Mat4::rotationY(-rotation_ * 0.45f)
         * Mat4::rotationX(0.45f)

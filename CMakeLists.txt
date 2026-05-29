@@ -12,6 +12,7 @@ add_executable(SimpleRenderer WIN32
     src/core/Camera.cpp
     src/core/Framebuffer.cpp
     src/platform/Win32Window.cpp
+    src/renderer/ObjLoader.cpp
     src/renderer/Renderer.cpp
     src/renderer/Texture.cpp
     src/scenes/TestScene.cpp
