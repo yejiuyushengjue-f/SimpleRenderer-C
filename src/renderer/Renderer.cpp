@@ -42,24 +42,6 @@ struct ShadowVertex {
     float depth = 0.0f;
 };
 
-struct DirectionalLight {
-    Vec3 direction;
-    Color color;
-    float intensity = 1.0f;
-};
-
-struct PointLight {
-    Vec3 position;
-    Color color;
-    float intensity = 1.0f;
-    float range = 1.0f;
-};
-
-struct ViewLightSet {
-    std::array<DirectionalLight, 3> directionalLights;
-    std::array<PointLight, 2> pointLights;
-};
-
 float edge(Vec2 a, Vec2 b, Vec2 p)
 {
     return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
@@ -354,6 +336,12 @@ Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
     return normalize({ transformed.x, transformed.y, transformed.z });
 }
 
+Vec3 transformPoint(const Mat4& matrix, Vec3 point)
+{
+    const Vec4 transformed = matrix * Vec4 { point.x, point.y, point.z, 1.0f };
+    return { transformed.x, transformed.y, transformed.z };
+}
+
 DirectionalLight sceneLight()
 {
     return {
@@ -375,13 +363,13 @@ ViewLightSet sceneLightsInView(const Mat4& view)
         },
         {
             PointLight {
-                { (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).x, (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).y, (view * Vec4 { -1.35f, 0.85f, -1.7f, 1.0f }).z },
+                transformPoint(view, { -1.35f, 0.85f, -1.7f }),
                 { 255, 205, 150, 255 },
                 0.75f,
                 3.0f,
             },
             PointLight {
-                { (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).x, (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).y, (view * Vec4 { 1.45f, -0.35f, -2.25f, 1.0f }).z },
+                transformPoint(view, { 1.45f, -0.35f, -2.25f }),
                 { 120, 210, 255, 255 },
                 0.55f,
                 2.4f,
@@ -503,29 +491,50 @@ void Renderer::render(const TestScene& scene, const Camera& camera, Framebuffer&
     renderShadowMap(scene, lightViewProjection, shadowMap_);
 
     const Mat4 view = camera.viewMatrix();
+    const ViewLightSet lights = sceneLightsInView(view);
     const Mat4 projection = camera.projectionMatrix(framebuffer.width(), framebuffer.height());
     for (const DrawCommand& command : scene.drawCommands()) {
-        draw(command, view, projection, lightViewProjection, shadowMap_, framebuffer);
+        draw(command, view, projection, lightViewProjection, light, lights, shadowMap_, framebuffer);
     }
 }
 
-void Renderer::draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer)
+void Renderer::draw(
+    const DrawCommand& command,
+    const Mat4& view,
+    const Mat4& projection,
+    const Mat4& lightViewProjection,
+    const DirectionalLight& light,
+    const ViewLightSet& lights,
+    const ShadowMap& shadowMap,
+    Framebuffer& framebuffer)
 {
     if (!command.mesh.vertices || command.mesh.vertexCount < 3) {
         return;
     }
 
     for (int i = 0; i + 2 < command.mesh.vertexCount; i += 3) {
-        drawTriangle(command, command.mesh.vertices + i, view, projection, lightViewProjection, shadowMap, framebuffer);
+        drawTriangle(command, command.mesh.vertices + i, view, projection, lightViewProjection, light, lights, shadowMap, framebuffer);
     }
 }
 
-void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer)
+void Renderer::drawTriangle(
+    const DrawCommand& command,
+    const Vertex* vertices,
+    const Mat4& view,
+    const Mat4& projection,
+    const Mat4& lightViewProjection,
+    const DirectionalLight& light,
+    const ViewLightSet& lights,
+    const ShadowMap& shadowMap,
+    Framebuffer& framebuffer)
 {
     const Mat4 modelView = view * command.transform;
     const Mat4 mvp = projection * modelView;
-    const DirectionalLight light = sceneLight();
-    const ViewLightSet lights = sceneLightsInView(view);
+    const RenderMode mode = renderMode_;
+    const bool needsSurfaceColor = mode == RenderMode::Final || mode == RenderMode::Albedo;
+    const bool needsNormal = mode == RenderMode::Final || mode == RenderMode::Normal || mode == RenderMode::Shadow || mode == RenderMode::Light;
+    const bool needsViewPosition = mode == RenderMode::Final || mode == RenderMode::Light;
+    const bool needsShadow = mode == RenderMode::Final || mode == RenderMode::Shadow || mode == RenderMode::Light;
 
     ClipVertex clipTriangle[3] = {};
 
@@ -593,30 +602,46 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                     (screen[0].uvOverW.x * w0 + screen[1].uvOverW.x * w1 + screen[2].uvOverW.x * w2) / interpolatedInvW,
                     (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
                 };
-                const Vec3 worldPosition = {
-                    (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
-                    (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
-                    (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
-                };
-                const Vec3 viewPosition = {
-                    (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
-                    (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
-                    (screen[0].viewPositionOverW.z * w0 + screen[1].viewPositionOverW.z * w1 + screen[2].viewPositionOverW.z * w2) / interpolatedInvW,
-                };
-                const Vec3 normal = {
-                    (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
-                    (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
-                    (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
-                };
-
-                Color surfaceColor = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
-                if (command.material.diffuseTexture) {
-                    surfaceColor = modulate(command.material.diffuseTexture->sample(uv), surfaceColor);
+                Vec3 normal {};
+                if (needsNormal) {
+                    normal = {
+                        (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
+                        (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
+                        (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
+                    };
                 }
-                const Color albedo = modulate(surfaceColor, command.material.diffuseColor);
-                const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+
+                Vec3 viewPosition {};
+                if (needsViewPosition) {
+                    viewPosition = {
+                        (screen[0].viewPositionOverW.x * w0 + screen[1].viewPositionOverW.x * w1 + screen[2].viewPositionOverW.x * w2) / interpolatedInvW,
+                        (screen[0].viewPositionOverW.y * w0 + screen[1].viewPositionOverW.y * w1 + screen[2].viewPositionOverW.y * w2) / interpolatedInvW,
+                        (screen[0].viewPositionOverW.z * w0 + screen[1].viewPositionOverW.z * w1 + screen[2].viewPositionOverW.z * w2) / interpolatedInvW,
+                    };
+                }
+
+                float shadow = 1.0f;
+                if (needsShadow) {
+                    const Vec3 worldPosition = {
+                        (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
+                        (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
+                        (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
+                    };
+                    shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+                }
+
+                Color surfaceColor { 255, 255, 255, 255 };
+                Color albedo { 255, 255, 255, 255 };
+                if (needsSurfaceColor) {
+                    surfaceColor = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+                    if (command.material.diffuseTexture) {
+                        surfaceColor = modulate(command.material.diffuseTexture->sample(uv), surfaceColor);
+                    }
+                    albedo = modulate(surfaceColor, command.material.diffuseColor);
+                }
+
                 Color color = albedo;
-                switch (renderMode_) {
+                switch (mode) {
                 case RenderMode::Final:
                     color = applyLighting(surfaceColor, normal, viewPosition, lights, command.material, shadow);
                     break;
