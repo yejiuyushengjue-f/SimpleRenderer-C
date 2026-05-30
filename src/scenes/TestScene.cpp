@@ -84,6 +84,28 @@ Vertex makeVertex(Vec3 position, Vec2 uv, Vec3 normal)
     return { position, uv, normalize(normal), { 255, 255, 255, 255 } };
 }
 
+Material makeMaterial(
+    const Texture* diffuseTexture,
+    Color ambientColor,
+    Color diffuseColor,
+    Color specularColor,
+    float ambientStrength,
+    float diffuseStrength,
+    float specularStrength,
+    float shininess)
+{
+    Material material;
+    material.ambientColor = ambientColor;
+    material.diffuseColor = diffuseColor;
+    material.specularColor = specularColor;
+    material.diffuseTexture = diffuseTexture;
+    material.ambientStrength = ambientStrength;
+    material.diffuseStrength = diffuseStrength;
+    material.specularStrength = specularStrength;
+    material.shininess = shininess;
+    return material;
+}
+
 std::vector<Vertex> makeSphereMesh(float radius, int latitudeSegments, int longitudeSegments)
 {
     std::vector<Vertex> vertices;
@@ -159,14 +181,16 @@ std::vector<Vertex> makeCubeMesh(float size)
 TestScene::TestScene()
     : modelTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
+    , modelMaterial_(makeMaterial(&modelTexture_, { 210, 214, 220, 255 }, { 245, 245, 248, 255 }, { 245, 245, 255, 255 }, 0.23f, 0.95f, 0.38f, 36.0f))
+    , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f))
     , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
 {
     commands_[0].mesh = Mesh { modelMesh_.data(), static_cast<int>(modelMesh_.size()) };
-    commands_[0].texture = &modelTexture_;
+    commands_[0].material = modelMaterial_;
     commands_[0].castsShadow = !usingObjModel_;
     commands_[1].mesh = Mesh { cubeMesh_.data(), static_cast<int>(cubeMesh_.size()) };
-    commands_[1].texture = &cubeTexture_;
+    commands_[1].material = cubeMaterial_;
     commands_[1].castsShadow = true;
 }
 

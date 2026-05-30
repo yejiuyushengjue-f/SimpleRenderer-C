@@ -1,5 +1,6 @@
 #pragma once
 
+#include "renderer/Material.h"
 #include "renderer/Texture.h"
 #include "renderer/Vertex.h"
 
@@ -21,6 +22,8 @@ private:
     bool usingObjModel_ = false;
     Texture modelTexture_;
     Texture cubeTexture_;
+    Material modelMaterial_;
+    Material cubeMaterial_;
     std::vector<Vertex> modelMesh_;
     std::vector<Vertex> cubeMesh_;
     std::array<DrawCommand, 2> commands_;

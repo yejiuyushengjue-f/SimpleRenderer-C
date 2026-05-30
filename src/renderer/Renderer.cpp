@@ -279,59 +279,54 @@ Color uvToColor(Vec2 uv)
     return { repeat(uv.x), repeat(uv.y), 32, 255 };
 }
 
-Color addLight(Color current, Color lightColor, float diffuse, float specular, Color albedo)
+Color addLight(Color current, Color lightColor, float diffuse, float specular, Color diffuseColor, Color specularColor)
 {
     return {
         static_cast<std::uint8_t>(std::clamp(
             static_cast<float>(current.r)
-                + static_cast<float>(albedo.r) * (static_cast<float>(lightColor.r) / 255.0f) * diffuse
-                + static_cast<float>(lightColor.r) * specular,
+                + static_cast<float>(diffuseColor.r) * (static_cast<float>(lightColor.r) / 255.0f) * diffuse
+                + static_cast<float>(specularColor.r) * (static_cast<float>(lightColor.r) / 255.0f) * specular,
             0.0f,
             255.0f)),
         static_cast<std::uint8_t>(std::clamp(
             static_cast<float>(current.g)
-                + static_cast<float>(albedo.g) * (static_cast<float>(lightColor.g) / 255.0f) * diffuse
-                + static_cast<float>(lightColor.g) * specular,
+                + static_cast<float>(diffuseColor.g) * (static_cast<float>(lightColor.g) / 255.0f) * diffuse
+                + static_cast<float>(specularColor.g) * (static_cast<float>(lightColor.g) / 255.0f) * specular,
             0.0f,
             255.0f)),
         static_cast<std::uint8_t>(std::clamp(
             static_cast<float>(current.b)
-                + static_cast<float>(albedo.b) * (static_cast<float>(lightColor.b) / 255.0f) * diffuse
-                + static_cast<float>(lightColor.b) * specular,
+                + static_cast<float>(diffuseColor.b) * (static_cast<float>(lightColor.b) / 255.0f) * diffuse
+                + static_cast<float>(specularColor.b) * (static_cast<float>(lightColor.b) / 255.0f) * specular,
             0.0f,
             255.0f)),
-        albedo.a,
+        diffuseColor.a,
     };
 }
 
 Color applyLighting(
-    Color albedo,
+    Color surfaceColor,
     Vec3 normal,
     Vec3 viewPosition,
     const ViewLightSet& lights,
-    float ambient,
-    float specularStrength,
-    float shininess,
+    const Material& material,
     float primaryShadow)
 {
     const Vec3 n = normalize(normal);
     const Vec3 viewDirection = normalize({ -viewPosition.x, -viewPosition.y, -viewPosition.z });
+    const Color ambientColor = modulate(surfaceColor, material.ambientColor);
+    const Color diffuseColor = modulate(surfaceColor, material.diffuseColor);
 
-    Color result {
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.r) * ambient, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.g) * ambient, 0.0f, 255.0f)),
-        static_cast<std::uint8_t>(std::clamp(static_cast<float>(albedo.b) * ambient, 0.0f, 255.0f)),
-        albedo.a,
-    };
+    Color result = scaleColor(ambientColor, material.ambientStrength);
 
     for (std::size_t i = 0; i < lights.directionalLights.size(); ++i) {
         const DirectionalLight& light = lights.directionalLights[i];
         const float shadow = i == 0 ? primaryShadow : 1.0f;
         const Vec3 lightToSurface = normalize(light.direction);
         const Vec3 halfVector = normalize(lightToSurface + viewDirection);
-        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity * shadow;
-        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity * shadow;
-        result = addLight(result, light.color, diffuse, specular, albedo);
+        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * material.diffuseStrength * light.intensity * shadow;
+        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), material.shininess) * material.specularStrength * light.intensity * shadow;
+        result = addLight(result, light.color, diffuse, specular, diffuseColor, material.specularColor);
     }
 
     for (const PointLight& light : lights.pointLights) {
@@ -345,9 +340,9 @@ Color applyLighting(
 
         const Vec3 lightToSurface = toLight / distance;
         const Vec3 halfVector = normalize(lightToSurface + viewDirection);
-        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * light.intensity * attenuation * attenuation;
-        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), shininess) * specularStrength * light.intensity * attenuation * attenuation;
-        result = addLight(result, light.color, diffuse, specular, albedo);
+        const float diffuse = std::max(0.0f, dot(n, lightToSurface)) * material.diffuseStrength * light.intensity * attenuation * attenuation;
+        const float specular = std::pow(std::max(0.0f, dot(n, halfVector)), material.shininess) * material.specularStrength * light.intensity * attenuation * attenuation;
+        result = addLight(result, light.color, diffuse, specular, diffuseColor, material.specularColor);
     }
 
     return result;
@@ -531,9 +526,6 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
     const Mat4 mvp = projection * modelView;
     const DirectionalLight light = sceneLight();
     const ViewLightSet lights = sceneLightsInView(view);
-    constexpr float ambient = 0.24f;
-    constexpr float specularStrength = 0.48f;
-    constexpr float shininess = 48.0f;
 
     ClipVertex clipTriangle[3] = {};
 
@@ -617,15 +609,16 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                     (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
                 };
 
-                Color albedo = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
-                if (command.texture) {
-                    albedo = modulate(command.texture->sample(uv), albedo);
+                Color surfaceColor = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+                if (command.material.diffuseTexture) {
+                    surfaceColor = modulate(command.material.diffuseTexture->sample(uv), surfaceColor);
                 }
+                const Color albedo = modulate(surfaceColor, command.material.diffuseColor);
                 const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
                 Color color = albedo;
                 switch (renderMode_) {
                 case RenderMode::Final:
-                    color = applyLighting(albedo, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+                    color = applyLighting(surfaceColor, normal, viewPosition, lights, command.material, shadow);
                     break;
                 case RenderMode::Albedo:
                     color = albedo;
@@ -643,7 +636,7 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                     color = grayscale(shadow);
                     break;
                 case RenderMode::Light:
-                    color = applyLighting({ 255, 255, 255, 255 }, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+                    color = applyLighting({ 255, 255, 255, 255 }, normal, viewPosition, lights, command.material, shadow);
                     break;
                 }
 

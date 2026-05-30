@@ -2,10 +2,9 @@
 
 #include "core/Color.h"
 #include "math/Math.h"
+#include "renderer/Material.h"
 
 namespace sr {
-
-class Texture;
 
 struct Vertex {
     Vec3 position;
@@ -21,7 +20,7 @@ struct Mesh {
 
 struct DrawCommand {
     Mesh mesh;
-    const Texture* texture = nullptr;
+    Material material;
     bool castsShadow = true;
     Mat4 transform = Mat4::identity();
 };
