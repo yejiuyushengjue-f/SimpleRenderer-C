@@ -50,11 +50,12 @@ inline Vec3 cross(Vec3 lhs, Vec3 rhs)
 
 inline Vec3 normalize(Vec3 value)
 {
-    const float length = std::sqrt(dot(value, value));
-    if (length <= 0.000001f) {
+    const float lengthSquared = dot(value, value);
+    if (!std::isfinite(lengthSquared) || lengthSquared <= 0.000000000001f) {
         return {};
     }
 
+    const float length = std::sqrt(lengthSquared);
     return value * (1.0f / length);
 }
 

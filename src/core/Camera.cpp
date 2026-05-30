@@ -7,6 +7,10 @@ namespace sr {
 
 void Camera::update(const InputState& input, float deltaSeconds)
 {
+    if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) {
+        return;
+    }
+
     const float lookStep = lookSpeed_ * deltaSeconds;
     if (input.lookLeft) {
         yaw_ -= lookStep;
@@ -83,7 +87,9 @@ Mat4 Camera::viewMatrix() const
 
 Mat4 Camera::projectionMatrix(int width, int height) const
 {
-    const float aspect = static_cast<float>(width) / static_cast<float>(height);
+    const int safeWidth = std::max(1, width);
+    const int safeHeight = std::max(1, height);
+    const float aspect = static_cast<float>(safeWidth) / static_cast<float>(safeHeight);
     return Mat4::perspective(fovYRadians_, aspect, nearPlane_, farPlane_);
 }
 

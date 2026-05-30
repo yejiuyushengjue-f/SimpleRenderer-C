@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -11,6 +12,25 @@
 #endif
 
 namespace sr {
+
+namespace {
+
+std::size_t checkedPixelCount(int width, int height)
+{
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Texture dimensions must be positive.");
+    }
+
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h) {
+        throw std::runtime_error("Texture dimensions are too large.");
+    }
+
+    return w * h;
+}
+
+} // namespace
 
 #ifdef _WIN32
 namespace {
@@ -45,7 +65,7 @@ Texture::Texture(int width, int height, std::vector<Color> pixels)
     , height_(height)
     , pixels_(std::move(pixels))
 {
-    if (width_ <= 0 || height_ <= 0 || pixels_.size() != static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_)) {
+    if (pixels_.size() != checkedPixelCount(width_, height_)) {
         throw std::runtime_error("Invalid texture dimensions or pixel data.");
     }
 }
@@ -53,6 +73,9 @@ Texture::Texture(int width, int height, std::vector<Color> pixels)
 Color Texture::sample(Vec2 uv) const
 {
     if (empty()) {
+        return { 255, 255, 255, 255 };
+    }
+    if (!std::isfinite(uv.x) || !std::isfinite(uv.y)) {
         return { 255, 255, 255, 255 };
     }
 
@@ -113,9 +136,23 @@ Texture Texture::loadFromFile(const wchar_t* path)
 
     UINT width = 0;
     UINT height = 0;
-    converter->GetSize(&width, &height);
+    result = converter->GetSize(&width, &height);
+    if (FAILED(result) || width == 0 || height == 0) {
+        throw std::runtime_error("Texture has invalid dimensions.");
+    }
+    if (width > static_cast<UINT>(std::numeric_limits<int>::max()) || height > static_cast<UINT>(std::numeric_limits<int>::max())) {
+        throw std::runtime_error("Texture dimensions exceed supported range.");
+    }
+    if (width > std::numeric_limits<UINT>::max() / sizeof(Color)) {
+        throw std::runtime_error("Texture row stride is too large.");
+    }
 
-    std::vector<Color> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    const std::size_t pixelCount = checkedPixelCount(static_cast<int>(width), static_cast<int>(height));
+    if (pixelCount > std::numeric_limits<UINT>::max() / sizeof(Color)) {
+        throw std::runtime_error("Texture pixel buffer is too large.");
+    }
+
+    std::vector<Color> pixels(pixelCount);
     result = converter->CopyPixels(
         nullptr,
         width * sizeof(Color),
@@ -134,9 +171,11 @@ Texture Texture::loadFromFile(const wchar_t* path)
 
 Texture Texture::makeCheckerboard(int width, int height, int cells)
 {
-    std::vector<Color> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
-    const int cellWidth = std::max(1, width / cells);
-    const int cellHeight = std::max(1, height / cells);
+    const std::size_t pixelCount = checkedPixelCount(width, height);
+    const int safeCells = std::max(1, cells);
+    std::vector<Color> pixels(pixelCount);
+    const int cellWidth = std::max(1, width / safeCells);
+    const int cellHeight = std::max(1, height / safeCells);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {

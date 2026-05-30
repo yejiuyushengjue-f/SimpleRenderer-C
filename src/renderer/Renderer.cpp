@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 
 namespace sr {
 
@@ -41,6 +42,52 @@ struct ShadowVertex {
     Vec2 position;
     float depth = 0.0f;
 };
+
+bool isFinite(Vec2 value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y);
+}
+
+bool isFinite(Vec3 value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool isFinite(Vec4 value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w);
+}
+
+bool isValidRenderMode(RenderMode mode)
+{
+    switch (mode) {
+    case RenderMode::Final:
+    case RenderMode::Albedo:
+    case RenderMode::Normal:
+    case RenderMode::Depth:
+    case RenderMode::UV:
+    case RenderMode::Shadow:
+    case RenderMode::Light:
+        return true;
+    default:
+        return false;
+    }
+}
+
+std::size_t checkedDepthCount(int width, int height)
+{
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Shadow map dimensions must be positive.");
+    }
+
+    const std::size_t w = static_cast<std::size_t>(width);
+    const std::size_t h = static_cast<std::size_t>(height);
+    if (w > std::numeric_limits<std::size_t>::max() / h) {
+        throw std::runtime_error("Shadow map dimensions are too large.");
+    }
+
+    return w * h;
+}
 
 float edge(Vec2 a, Vec2 b, Vec2 p)
 {
@@ -136,7 +183,7 @@ ClipPolygon clipPolygonAgainstPlane(const ClipPolygon& input, int plane)
 
         if (currentInside != previousInside) {
             const float denominator = previousDistance - currentDistance;
-            const float t = std::abs(denominator) <= 0.000001f ? 0.0f : previousDistance / denominator;
+            const float t = std::clamp(std::abs(denominator) <= 0.000001f ? 0.0f : previousDistance / denominator, 0.0f, 1.0f);
             if (output.count < static_cast<int>(output.vertices.size())) {
                 output.vertices[static_cast<std::size_t>(output.count++)] = lerpClipVertex(previous, current, t);
             }
@@ -170,7 +217,7 @@ ClipPolygon clipTriangleToFrustum(const ClipVertex* triangle)
 
 bool toScreenVertex(const ClipVertex& vertex, int width, int height, ScreenVertex& out)
 {
-    if (std::abs(vertex.clip.w) <= 0.000001f) {
+    if (width <= 0 || height <= 0 || !isFinite(vertex.clip) || std::abs(vertex.clip.w) <= 0.000001f) {
         return false;
     }
 
@@ -178,6 +225,9 @@ bool toScreenVertex(const ClipVertex& vertex, int width, int height, ScreenVerte
     const float ndcX = vertex.clip.x * invW;
     const float ndcY = vertex.clip.y * invW;
     const float ndcZ = vertex.clip.z * invW;
+    if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || !std::isfinite(ndcZ)) {
+        return false;
+    }
 
     out = {
         {
@@ -236,6 +286,9 @@ Color scaleColor(Color color, float scale)
 
 Color grayscale(float value)
 {
+    if (!std::isfinite(value)) {
+        value = 0.0f;
+    }
     const std::uint8_t channel = static_cast<std::uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
     return { channel, channel, channel, 255 };
 }
@@ -253,6 +306,10 @@ Color normalToColor(Vec3 normal)
 
 Color uvToColor(Vec2 uv)
 {
+    if (!isFinite(uv)) {
+        return { 255, 0, 255, 255 };
+    }
+
     const auto repeat = [](float value) {
         const float wrapped = value - std::floor(value);
         return static_cast<std::uint8_t>(std::clamp(wrapped, 0.0f, 1.0f) * 255.0f);
@@ -388,8 +445,12 @@ Mat4 sceneLightViewProjection(const DirectionalLight& light)
 
 float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& light, const Mat4& lightViewProjection, const ShadowMap& shadowMap)
 {
+    if (!isFinite(worldPosition) || !isFinite(normal)) {
+        return 1.0f;
+    }
+
     const Vec4 lightClip = lightViewProjection * Vec4 { worldPosition.x, worldPosition.y, worldPosition.z, 1.0f };
-    if (std::abs(lightClip.w) <= 0.000001f) {
+    if (!isFinite(lightClip) || std::abs(lightClip.w) <= 0.000001f) {
         return 1.0f;
     }
 
@@ -397,6 +458,9 @@ float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& ligh
     const float ndcX = lightClip.x * invW;
     const float ndcY = lightClip.y * invW;
     const float ndcZ = lightClip.z * invW;
+    if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || !std::isfinite(ndcZ)) {
+        return 1.0f;
+    }
     if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f || ndcZ < -1.0f || ndcZ > 1.0f) {
         return 1.0f;
     }
@@ -417,7 +481,7 @@ float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& ligh
 ShadowMap::ShadowMap(int mapWidth, int mapHeight)
     : width(mapWidth)
     , height(mapHeight)
-    , depth(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), std::numeric_limits<float>::infinity())
+    , depth(checkedDepthCount(mapWidth, mapHeight), std::numeric_limits<float>::infinity())
 {
 }
 
@@ -428,7 +492,7 @@ void ShadowMap::clear()
 
 bool ShadowMap::setIfCloser(int x, int y, float value)
 {
-    if (x < 0 || y < 0 || x >= width || y >= height) {
+    if (x < 0 || y < 0 || x >= width || y >= height || !std::isfinite(value)) {
         return false;
     }
 
@@ -452,7 +516,7 @@ float ShadowMap::sample(int x, int y) const
 
 void Renderer::setRenderMode(RenderMode mode)
 {
-    renderMode_ = mode;
+    renderMode_ = isValidRenderMode(mode) ? mode : RenderMode::Final;
 }
 
 RenderMode Renderer::renderMode() const
@@ -543,13 +607,17 @@ void Renderer::drawTriangle(
         const Vec4 worldPosition = command.transform * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 viewPosition = modelView * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
+        const Vec3 normal = transformDirection(modelView, vertex.normal);
+        if (!isFinite(worldPosition) || !isFinite(viewPosition) || !isFinite(clip) || !isFinite(normal)) {
+            return;
+        }
 
         clipTriangle[i] = {
             clip,
             { worldPosition.x, worldPosition.y, worldPosition.z },
             { viewPosition.x, viewPosition.y, viewPosition.z },
             vertex.uv,
-            transformDirection(modelView, vertex.normal),
+            normal,
             vertex.color,
         };
     }
@@ -594,7 +662,7 @@ void Renderer::drawTriangle(
 
                 const float depth = screen[0].depth * w0 + screen[1].depth * w1 + screen[2].depth * w2;
                 const float interpolatedInvW = screen[0].invW * w0 + screen[1].invW * w1 + screen[2].invW * w2;
-                if (interpolatedInvW <= 0.000001f) {
+                if (!std::isfinite(depth) || !std::isfinite(interpolatedInvW) || interpolatedInvW <= 0.000001f) {
                     continue;
                 }
 

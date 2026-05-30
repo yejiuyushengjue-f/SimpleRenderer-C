@@ -1,5 +1,6 @@
 #include "platform/Win32Window.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace sr {
@@ -24,6 +25,10 @@ std::wstring widen(const char* text)
 
 Win32Window::Win32Window(void* nativeInstance, int showCommand, int width, int height, const char* title)
 {
+    if (width <= 0 || height <= 0) {
+        throw std::runtime_error("Window dimensions must be positive.");
+    }
+
     HINSTANCE instance = static_cast<HINSTANCE>(nativeInstance);
 
     WNDCLASSW windowClass = {};
@@ -32,12 +37,16 @@ Win32Window::Win32Window(void* nativeInstance, int showCommand, int width, int h
     windowClass.lpszClassName = windowClassName;
     windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
 
-    RegisterClassW(&windowClass);
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        throw std::runtime_error("Failed to register Win32 window class.");
+    }
 
     RECT rect = { 0, 0, width, height };
-    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    if (!AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE)) {
+        throw std::runtime_error("Failed to calculate Win32 window size.");
+    }
 
-    const std::wstring wideTitle = widen(title);
+    const std::wstring wideTitle = widen(title ? title : "");
     hwnd_ = CreateWindowExW(
         0,
         windowClassName,
@@ -76,6 +85,9 @@ Win32Window::~Win32Window()
     if (hwnd_ && deviceContext_) {
         ReleaseDC(hwnd_, deviceContext_);
     }
+    if (hwnd_) {
+        DestroyWindow(hwnd_);
+    }
 }
 
 bool Win32Window::processMessages()
@@ -95,6 +107,12 @@ bool Win32Window::processMessages()
 
 InputState Win32Window::inputState()
 {
+    const bool isActive = GetForegroundWindow() == hwnd_;
+    if (!isActive) {
+        hasLastMousePosition_ = false;
+        return {};
+    }
+
     const auto keyDown = [](int key) {
         return (GetAsyncKeyState(key) & 0x8000) != 0;
     };
@@ -106,7 +124,7 @@ InputState Win32Window::inputState()
         }
     }
 
-    const bool mouseLook = GetForegroundWindow() == hwnd_ && keyDown(VK_RBUTTON);
+    const bool mouseLook = keyDown(VK_RBUTTON);
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
 
@@ -114,8 +132,8 @@ InputState Win32Window::inputState()
     if (GetCursorPos(&mousePosition)) {
         ScreenToClient(hwnd_, &mousePosition);
         if (mouseLook && hasLastMousePosition_) {
-            mouseDeltaX = static_cast<float>(mousePosition.x - lastMousePosition_.x);
-            mouseDeltaY = static_cast<float>(mousePosition.y - lastMousePosition_.y);
+            mouseDeltaX = std::clamp(static_cast<float>(mousePosition.x - lastMousePosition_.x), -250.0f, 250.0f);
+            mouseDeltaY = std::clamp(static_cast<float>(mousePosition.y - lastMousePosition_.y), -250.0f, 250.0f);
         }
         lastMousePosition_ = mousePosition;
         hasLastMousePosition_ = true;
@@ -144,11 +162,17 @@ InputState Win32Window::inputState()
 
 void Win32Window::setTitle(const char* title)
 {
-    SetWindowTextW(hwnd_, widen(title).c_str());
+    if (hwnd_) {
+        SetWindowTextW(hwnd_, widen(title ? title : "").c_str());
+    }
 }
 
 void Win32Window::present(const Framebuffer& framebuffer)
 {
+    if (!hwnd_ || !deviceContext_ || framebuffer.width() <= 0 || framebuffer.height() <= 0) {
+        return;
+    }
+
     StretchDIBits(
         deviceContext_,
         0,
