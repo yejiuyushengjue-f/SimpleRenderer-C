@@ -252,6 +252,33 @@ Color scaleColor(Color color, float scale)
     };
 }
 
+Color grayscale(float value)
+{
+    const std::uint8_t channel = static_cast<std::uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
+    return { channel, channel, channel, 255 };
+}
+
+Color normalToColor(Vec3 normal)
+{
+    const Vec3 n = normalize(normal);
+    return {
+        static_cast<std::uint8_t>(std::clamp(n.x * 0.5f + 0.5f, 0.0f, 1.0f) * 255.0f),
+        static_cast<std::uint8_t>(std::clamp(n.y * 0.5f + 0.5f, 0.0f, 1.0f) * 255.0f),
+        static_cast<std::uint8_t>(std::clamp(n.z * 0.5f + 0.5f, 0.0f, 1.0f) * 255.0f),
+        255,
+    };
+}
+
+Color uvToColor(Vec2 uv)
+{
+    const auto repeat = [](float value) {
+        const float wrapped = value - std::floor(value);
+        return static_cast<std::uint8_t>(std::clamp(wrapped, 0.0f, 1.0f) * 255.0f);
+    };
+
+    return { repeat(uv.x), repeat(uv.y), 32, 255 };
+}
+
 Color addLight(Color current, Color lightColor, float diffuse, float specular, Color albedo)
 {
     return {
@@ -440,6 +467,38 @@ float ShadowMap::sample(int x, int y) const
     return depth[static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)];
 }
 
+void Renderer::setRenderMode(RenderMode mode)
+{
+    renderMode_ = mode;
+}
+
+RenderMode Renderer::renderMode() const
+{
+    return renderMode_;
+}
+
+const char* Renderer::renderModeName() const
+{
+    switch (renderMode_) {
+    case RenderMode::Final:
+        return "Final";
+    case RenderMode::Albedo:
+        return "Albedo";
+    case RenderMode::Normal:
+        return "Normal";
+    case RenderMode::Depth:
+        return "Depth";
+    case RenderMode::UV:
+        return "UV";
+    case RenderMode::Shadow:
+        return "Shadow";
+    case RenderMode::Light:
+        return "Light";
+    default:
+        return "Unknown";
+    }
+}
+
 void Renderer::render(const TestScene& scene, const Camera& camera, Framebuffer& framebuffer)
 {
     framebuffer.clear({ 18, 20, 28, 255 });
@@ -558,12 +617,35 @@ void Renderer::drawTriangle(const DrawCommand& command, const Vertex* vertices, 
                     (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
                 };
 
-                Color color = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
+                Color albedo = mixColor(screen[0].color, screen[1].color, screen[2].color, w0, w1, w2);
                 if (command.texture) {
-                    color = modulate(command.texture->sample(uv), color);
+                    albedo = modulate(command.texture->sample(uv), albedo);
                 }
                 const float shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
-                color = applyLighting(color, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+                Color color = albedo;
+                switch (renderMode_) {
+                case RenderMode::Final:
+                    color = applyLighting(albedo, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+                    break;
+                case RenderMode::Albedo:
+                    color = albedo;
+                    break;
+                case RenderMode::Normal:
+                    color = normalToColor(normal);
+                    break;
+                case RenderMode::Depth:
+                    color = grayscale(depth * 0.5f + 0.5f);
+                    break;
+                case RenderMode::UV:
+                    color = uvToColor(uv);
+                    break;
+                case RenderMode::Shadow:
+                    color = grayscale(shadow);
+                    break;
+                case RenderMode::Light:
+                    color = applyLighting({ 255, 255, 255, 255 }, normal, viewPosition, lights, ambient, specularStrength, shininess, shadow);
+                    break;
+                }
 
                 framebuffer.setPixelIfCloser(x, y, depth, color);
             }

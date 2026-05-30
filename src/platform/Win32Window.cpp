@@ -99,6 +99,13 @@ InputState Win32Window::inputState()
         return (GetAsyncKeyState(key) & 0x8000) != 0;
     };
 
+    int renderModeSelection = 0;
+    for (int i = 0; i < 7; ++i) {
+        if (keyDown('1' + i)) {
+            renderModeSelection = i + 1;
+        }
+    }
+
     const bool mouseLook = GetForegroundWindow() == hwnd_ && keyDown(VK_RBUTTON);
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
@@ -131,7 +138,13 @@ InputState Win32Window::inputState()
         mouseLook,
         mouseDeltaX,
         mouseDeltaY,
+        renderModeSelection,
     };
+}
+
+void Win32Window::setTitle(const char* title)
+{
+    SetWindowTextW(hwnd_, widen(title).c_str());
 }
 
 void Win32Window::present(const Framebuffer& framebuffer)
@@ -181,6 +194,10 @@ bool Win32Window::processMessages()
 InputState Win32Window::inputState()
 {
     return {};
+}
+
+void Win32Window::setTitle(const char*)
+{
 }
 
 void Win32Window::present(const Framebuffer&)

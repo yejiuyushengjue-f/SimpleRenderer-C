@@ -1,6 +1,7 @@
 #include "core/Application.h"
 
 #include <algorithm>
+#include <string>
 
 namespace sr {
 
@@ -9,6 +10,7 @@ Application::Application(void* nativeInstance, int showCommand)
     , window_(nativeInstance, showCommand, framebuffer_.width(), framebuffer_.height(), "SimpleRenderer")
     , lastFrameTime_(std::chrono::steady_clock::now())
 {
+    window_.setTitle("SimpleRenderer - Render Mode: Final");
 }
 
 int Application::run()
@@ -28,7 +30,17 @@ int Application::run()
 
 void Application::update(float deltaSeconds)
 {
-    camera_.update(window_.inputState(), deltaSeconds);
+    const InputState input = window_.inputState();
+    camera_.update(input, deltaSeconds);
+    if (input.renderModeSelection > 0) {
+        renderer_.setRenderMode(static_cast<RenderMode>(input.renderModeSelection - 1));
+    }
+    if (renderer_.renderMode() != lastWindowTitleMode_) {
+        std::string title = "SimpleRenderer - Render Mode: ";
+        title += renderer_.renderModeName();
+        window_.setTitle(title.c_str());
+        lastWindowTitleMode_ = renderer_.renderMode();
+    }
     scene_.update(deltaSeconds);
 }
 

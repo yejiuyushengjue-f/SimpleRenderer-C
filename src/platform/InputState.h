@@ -17,6 +17,7 @@ struct InputState {
     bool mouseLook = false;
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
+    int renderModeSelection = 0;
 };
 
 } // namespace sr

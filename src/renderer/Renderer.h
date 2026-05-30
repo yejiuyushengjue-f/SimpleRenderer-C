@@ -10,6 +10,16 @@ namespace sr {
 
 class TestScene;
 
+enum class RenderMode {
+    Final = 0,
+    Albedo,
+    Normal,
+    Depth,
+    UV,
+    Shadow,
+    Light,
+};
+
 struct ShadowMap {
     int width = 512;
     int height = 512;
@@ -24,9 +34,13 @@ struct ShadowMap {
 class Renderer {
 public:
     void render(const TestScene& scene, const Camera& camera, Framebuffer& framebuffer);
+    void setRenderMode(RenderMode mode);
+    RenderMode renderMode() const;
+    const char* renderModeName() const;
 
 private:
     ShadowMap shadowMap_;
+    RenderMode renderMode_ = RenderMode::Final;
 
     void draw(const DrawCommand& command, const Mat4& view, const Mat4& projection, const Mat4& lightViewProjection, const ShadowMap& shadowMap, Framebuffer& framebuffer);
     void drawTriangle(

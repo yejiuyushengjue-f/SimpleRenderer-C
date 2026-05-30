@@ -26,6 +26,7 @@ private:
     Renderer renderer_;
     TestScene scene_;
     std::chrono::steady_clock::time_point lastFrameTime_;
+    RenderMode lastWindowTitleMode_ = RenderMode::Final;
 };
 
 } // namespace sr

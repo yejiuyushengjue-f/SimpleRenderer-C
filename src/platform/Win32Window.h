@@ -18,6 +18,7 @@ public:
 
     bool processMessages();
     InputState inputState();
+    void setTitle(const char* title);
     void present(const Framebuffer& framebuffer);
 
 private:
