@@ -28,7 +28,7 @@
 - Normal Mapping：基于每三角形 UV 自动生成切线，在像素阶段采样切线空间 normal map 并转换到观察空间参与光照。
 - 多光源着色：环境光、多个方向光、点光源、材质化 Lambert 漫反射和 Blinn-Phong 高光。
 - 主方向光 Shadow Mapping，使用 CPU 生成的光源空间深度图；支持 constant bias、slope-scale bias 和 3x3 加权 PCF 软阴影。
-- 程序化三维网格：UV 球体、带纹理立方体和由多块高对比棋盘格 tile 组成、可接收阴影的地面，并为测试场景生成程序化波纹 normal map。
+- 程序化三维网格：UV 球体、带纹理立方体和由多块高对比棋盘格 tile 组成、可接收阴影的地面，并为测试场景生成较柔和的程序化波纹 normal map。
 - 测试场景会加载 `res/Model` 或 `res/Models` 下找到的第一个 OBJ 模型，使其面向初始摄像机并保持水平旋转；场景包含一个带 normal map 的后方立方体和一块带 normal map 的地面，用于观察投影阴影；如果没有 OBJ，则使用前方球体和后方立方体作为备用场景。
 
 ## Debug Views
