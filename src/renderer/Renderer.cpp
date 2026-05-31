@@ -416,7 +416,7 @@ Vec3 transformPoint(const Mat4& matrix, Vec3 point)
 DirectionalLight sceneLight()
 {
     return {
-        normalize({ -0.45f, -0.55f, 1.0f }),
+        normalize({ -0.45f, 0.65f, 1.0f }),
         { 255, 244, 224, 255 },
         0.8f,
     };

@@ -24,9 +24,11 @@ private:
     Texture cubeTexture_;
     Material modelMaterial_;
     Material cubeMaterial_;
+    Material groundMaterial_;
     std::vector<Vertex> modelMesh_;
     std::vector<Vertex> cubeMesh_;
-    std::array<DrawCommand, 2> commands_;
+    std::vector<Vertex> groundMesh_;
+    std::array<DrawCommand, 3> commands_;
 };
 
 } // namespace sr

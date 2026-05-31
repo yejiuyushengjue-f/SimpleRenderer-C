@@ -176,6 +176,29 @@ std::vector<Vertex> makeCubeMesh(float size)
     return vertices;
 }
 
+std::vector<Vertex> makeGroundMesh()
+{
+    const float halfWidth = 4.2f;
+    const float y = -1.02f;
+    const float nearZ = -0.65f;
+    const float farZ = -7.2f;
+    const Vec3 normal { 0.0f, 1.0f, 0.0f };
+
+    const Vertex a = makeVertex({ -halfWidth, y, nearZ }, { 0.0f, 0.0f }, normal);
+    const Vertex b = makeVertex({ halfWidth, y, nearZ }, { 8.0f, 0.0f }, normal);
+    const Vertex c = makeVertex({ halfWidth, y, farZ }, { 8.0f, 7.0f }, normal);
+    const Vertex d = makeVertex({ -halfWidth, y, farZ }, { 0.0f, 7.0f }, normal);
+
+    return {
+        a,
+        b,
+        c,
+        a,
+        c,
+        d,
+    };
+}
+
 } // namespace
 
 TestScene::TestScene()
@@ -183,8 +206,10 @@ TestScene::TestScene()
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
     , modelMaterial_(makeMaterial(&modelTexture_, { 210, 214, 220, 255 }, { 245, 245, 248, 255 }, { 245, 245, 255, 255 }, 0.23f, 0.95f, 0.38f, 36.0f))
     , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f))
+    , groundMaterial_(makeMaterial(nullptr, { 150, 156, 162, 255 }, { 190, 198, 204, 255 }, { 90, 96, 104, 255 }, 0.24f, 0.88f, 0.08f, 22.0f))
     , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
+    , groundMesh_(makeGroundMesh())
 {
     commands_[0].mesh = Mesh { modelMesh_.data(), static_cast<int>(modelMesh_.size()) };
     commands_[0].material = modelMaterial_;
@@ -192,6 +217,9 @@ TestScene::TestScene()
     commands_[1].mesh = Mesh { cubeMesh_.data(), static_cast<int>(cubeMesh_.size()) };
     commands_[1].material = cubeMaterial_;
     commands_[1].castsShadow = true;
+    commands_[2].mesh = Mesh { groundMesh_.data(), static_cast<int>(groundMesh_.size()) };
+    commands_[2].material = groundMaterial_;
+    commands_[2].castsShadow = false;
 }
 
 void TestScene::update(float deltaSeconds)
@@ -204,6 +232,7 @@ void TestScene::update(float deltaSeconds)
         * Mat4::rotationY(-rotation_ * 0.45f)
         * Mat4::rotationX(0.45f)
         * Mat4::rotationZ(0.18f);
+    commands_[2].transform = Mat4::identity();
 }
 
 } // namespace sr
