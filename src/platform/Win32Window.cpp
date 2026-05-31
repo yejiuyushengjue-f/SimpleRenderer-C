@@ -118,7 +118,7 @@ InputState Win32Window::inputState()
     };
 
     int renderModeSelection = 0;
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 8; ++i) {
         if (keyDown('1' + i)) {
             renderModeSelection = i + 1;
         }

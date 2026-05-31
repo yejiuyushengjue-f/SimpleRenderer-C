@@ -43,6 +43,19 @@ struct ShadowVertex {
     float depth = 0.0f;
 };
 
+struct ShadowProjection {
+    Vec2 texelPosition;
+    float depth = 0.0f;
+    float depth01 = 0.0f;
+};
+
+constexpr float shadowConstantBias = 0.0025f;
+constexpr float shadowSlopeScaleBias = 0.014f;
+constexpr float shadowMinimumBias = 0.0035f;
+constexpr float shadowMaximumBias = 0.035f;
+constexpr int shadowPcfRadius = 1;
+constexpr float shadowMinimumVisibility = 0.35f;
+
 bool isFinite(Vec2 value)
 {
     return std::isfinite(value.x) && std::isfinite(value.y);
@@ -68,6 +81,7 @@ bool isValidRenderMode(RenderMode mode)
     case RenderMode::UV:
     case RenderMode::Shadow:
     case RenderMode::Light:
+    case RenderMode::LightDepth:
         return true;
     default:
         return false;
@@ -443,15 +457,15 @@ Mat4 sceneLightViewProjection(const DirectionalLight& light)
     return lightProjection * lightView;
 }
 
-float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& light, const Mat4& lightViewProjection, const ShadowMap& shadowMap)
+bool projectToShadowMap(Vec3 worldPosition, const Mat4& lightViewProjection, const ShadowMap& shadowMap, ShadowProjection& out)
 {
-    if (!isFinite(worldPosition) || !isFinite(normal)) {
-        return 1.0f;
+    if (!isFinite(worldPosition)) {
+        return false;
     }
 
     const Vec4 lightClip = lightViewProjection * Vec4 { worldPosition.x, worldPosition.y, worldPosition.z, 1.0f };
     if (!isFinite(lightClip) || std::abs(lightClip.w) <= 0.000001f) {
-        return 1.0f;
+        return false;
     }
 
     const float invW = 1.0f / lightClip.w;
@@ -459,21 +473,79 @@ float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& ligh
     const float ndcY = lightClip.y * invW;
     const float ndcZ = lightClip.z * invW;
     if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || !std::isfinite(ndcZ)) {
-        return 1.0f;
+        return false;
     }
     if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f || ndcZ < -1.0f || ndcZ > 1.0f) {
+        return false;
+    }
+
+    out = {
+        {
+            (ndcX * 0.5f + 0.5f) * static_cast<float>(shadowMap.width - 1),
+            (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(shadowMap.height - 1),
+        },
+        ndcZ,
+        ndcZ * 0.5f + 0.5f,
+    };
+    return true;
+}
+
+float shadowBias(Vec3 normal, Vec3 lightDirection)
+{
+    const float normalDotLight = std::max(0.0f, dot(normalize(normal), normalize(lightDirection)));
+    const float slopeBias = shadowSlopeScaleBias * (1.0f - normalDotLight);
+    return std::clamp(shadowConstantBias + slopeBias, shadowMinimumBias, shadowMaximumBias);
+}
+
+float pcfShadowFactor(const ShadowProjection& projection, float bias, const ShadowMap& shadowMap)
+{
+    const int centerX = static_cast<int>(std::round(projection.texelPosition.x));
+    const int centerY = static_cast<int>(std::round(projection.texelPosition.y));
+    float weightedVisibility = 0.0f;
+    float totalWeight = 0.0f;
+
+    for (int offsetY = -shadowPcfRadius; offsetY <= shadowPcfRadius; ++offsetY) {
+        for (int offsetX = -shadowPcfRadius; offsetX <= shadowPcfRadius; ++offsetX) {
+            const int absOffsetX = offsetX < 0 ? -offsetX : offsetX;
+            const int absOffsetY = offsetY < 0 ? -offsetY : offsetY;
+            const float weight = static_cast<float>((shadowPcfRadius + 1 - absOffsetX) * (shadowPcfRadius + 1 - absOffsetY));
+            const float closestDepth = shadowMap.sample(centerX + offsetX, centerY + offsetY);
+            const float lit = (!std::isfinite(closestDepth) || projection.depth <= closestDepth + bias) ? 1.0f : 0.0f;
+            weightedVisibility += lit * weight;
+            totalWeight += weight;
+        }
+    }
+
+    if (totalWeight <= 0.0f) {
         return 1.0f;
     }
 
-    const float sx = (ndcX * 0.5f + 0.5f) * static_cast<float>(shadowMap.width - 1);
-    const float sy = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(shadowMap.height - 1);
-    const int ix = static_cast<int>(std::round(sx));
-    const int iy = static_cast<int>(std::round(sy));
+    const float visibility = weightedVisibility / totalWeight;
+    return shadowMinimumVisibility + (1.0f - shadowMinimumVisibility) * visibility;
+}
 
-    const float slopeBias = 0.01f * (1.0f - std::max(0.0f, dot(normalize(normal), normalize(light.direction))));
-    const float bias = std::max(0.0035f, slopeBias);
-    const float closestDepth = shadowMap.sample(ix, iy);
-    return ndcZ > closestDepth + bias ? 0.35f : 1.0f;
+float shadowFactor(Vec3 worldPosition, Vec3 normal, const DirectionalLight& light, const Mat4& lightViewProjection, const ShadowMap& shadowMap)
+{
+    if (!isFinite(normal)) {
+        return 1.0f;
+    }
+
+    ShadowProjection projection;
+    if (!projectToShadowMap(worldPosition, lightViewProjection, shadowMap, projection)) {
+        return 1.0f;
+    }
+
+    return pcfShadowFactor(projection, shadowBias(normal, light.direction), shadowMap);
+}
+
+float lightSpaceDepth01(Vec3 worldPosition, const Mat4& lightViewProjection, const ShadowMap& shadowMap)
+{
+    ShadowProjection projection;
+    if (!projectToShadowMap(worldPosition, lightViewProjection, shadowMap, projection)) {
+        return -1.0f;
+    }
+
+    return projection.depth01;
 }
 
 } // namespace
@@ -538,9 +610,11 @@ const char* Renderer::renderModeName() const
     case RenderMode::UV:
         return "UV";
     case RenderMode::Shadow:
-        return "Shadow";
+        return "Shadow Factor";
     case RenderMode::Light:
         return "Light";
+    case RenderMode::LightDepth:
+        return "Light-space Depth";
     default:
         return "Unknown";
     }
@@ -599,6 +673,8 @@ void Renderer::drawTriangle(
     const bool needsNormal = mode == RenderMode::Final || mode == RenderMode::Normal || mode == RenderMode::Shadow || mode == RenderMode::Light;
     const bool needsViewPosition = mode == RenderMode::Final || mode == RenderMode::Light;
     const bool needsShadow = mode == RenderMode::Final || mode == RenderMode::Shadow || mode == RenderMode::Light;
+    const bool needsLightSpaceDepth = mode == RenderMode::LightDepth;
+    const bool needsLightSpacePosition = needsShadow || needsLightSpaceDepth;
 
     ClipVertex clipTriangle[3] = {};
 
@@ -689,13 +765,22 @@ void Renderer::drawTriangle(
                 }
 
                 float shadow = 1.0f;
-                if (needsShadow) {
+                float lightDepth = -1.0f;
+                if (needsLightSpacePosition) {
                     const Vec3 worldPosition = {
                         (screen[0].worldPositionOverW.x * w0 + screen[1].worldPositionOverW.x * w1 + screen[2].worldPositionOverW.x * w2) / interpolatedInvW,
                         (screen[0].worldPositionOverW.y * w0 + screen[1].worldPositionOverW.y * w1 + screen[2].worldPositionOverW.y * w2) / interpolatedInvW,
                         (screen[0].worldPositionOverW.z * w0 + screen[1].worldPositionOverW.z * w1 + screen[2].worldPositionOverW.z * w2) / interpolatedInvW,
                     };
-                    shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+                    if (!isFinite(worldPosition)) {
+                        continue;
+                    }
+                    if (needsShadow) {
+                        shadow = shadowFactor(worldPosition, normal, light, lightViewProjection, shadowMap);
+                    }
+                    if (needsLightSpaceDepth) {
+                        lightDepth = lightSpaceDepth01(worldPosition, lightViewProjection, shadowMap);
+                    }
                 }
 
                 Color surfaceColor { 255, 255, 255, 255 };
@@ -731,6 +816,9 @@ void Renderer::drawTriangle(
                 case RenderMode::Light:
                     color = applyLighting({ 255, 255, 255, 255 }, normal, viewPosition, lights, command.material, shadow);
                     break;
+                case RenderMode::LightDepth:
+                    color = lightDepth >= 0.0f ? grayscale(lightDepth) : Color { 64, 0, 96, 255 };
+                    break;
                 }
 
                 framebuffer.setPixelIfCloser(x, y, depth, color);
@@ -761,7 +849,7 @@ void Renderer::drawShadowTriangle(const DrawCommand& command, const Vertex* vert
     for (int i = 0; i < 3; ++i) {
         const Vertex& vertex = vertices[i];
         const Vec4 clip = lightMvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
-        if (std::abs(clip.w) <= 0.000001f) {
+        if (!isFinite(clip) || std::abs(clip.w) <= 0.000001f) {
             return;
         }
 
@@ -769,6 +857,9 @@ void Renderer::drawShadowTriangle(const DrawCommand& command, const Vertex* vert
         const float ndcX = clip.x * invW;
         const float ndcY = clip.y * invW;
         const float ndcZ = clip.z * invW;
+        if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || !std::isfinite(ndcZ)) {
+            return;
+        }
 
         screen[i] = {
             {

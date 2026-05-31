@@ -26,7 +26,7 @@
 - 对 UV、法线、世界坐标和观察空间坐标进行透视校正插值。
 - 像素着色支持材质颜色、纹理颜色与顶点颜色共同参与计算。
 - 多光源着色：环境光、多个方向光、点光源、材质化 Lambert 漫反射和 Blinn-Phong 高光。
-- 主方向光 Shadow Mapping，使用 CPU 生成的光源空间深度图。
+- 主方向光 Shadow Mapping，使用 CPU 生成的光源空间深度图；支持 constant bias、slope-scale bias 和 3x3 加权 PCF 软阴影。
 - 程序化三维网格：UV 球体和带纹理立方体。
 - 测试场景会加载 `res/Model` 或 `res/Models` 下找到的第一个 OBJ 模型，使其面向初始摄像机并保持水平旋转；如果没有 OBJ，则使用前方球体和后方立方体作为备用场景。
 
@@ -37,8 +37,9 @@
 - `3` Normal：将观察空间法线映射到 RGB，用于检查法线方向和模型表面连续性。
 - `4` Depth：显示当前摄像机视角下的 NDC 深度，用于检查深度缓冲和遮挡关系。
 - `5` UV：将 UV 坐标映射到颜色，用于观察纹理坐标展开和重复。
-- `6` Shadow：显示 Shadow Mapping 得到的阴影因子，白色为受光，深色为阴影。
+- `6` Shadow Factor：显示经过 bias 和 PCF 后的阴影因子，白色为受光，深色为阴影，中间灰度为软阴影过渡。
 - `7` Light：使用白色表面显示当前材质的纯光照响应，用于观察多光源、漫反射、高光、shininess 和阴影对亮度的影响。
+- `8` Light-space Depth：显示当前像素投影到主方向光光源空间后的深度，黑色更靠近光源，白色更远；紫色表示超出当前光源正交投影范围。
 
 ## Assets
 
@@ -65,7 +66,7 @@ OBJ 模型可以放在以下任意目录：
 - 方向键：旋转视角。
 - 按住鼠标右键并拖动：旋转视角。
 - `Shift`：按住后加速移动。
-- `1` 到 `7`：切换 Render Mode / Debug View。
+- `1` 到 `8`：切换 Render Mode / Debug View。
 
 ## Build
 
@@ -84,4 +85,4 @@ cmake --build build --config Release
 .\build\Release\SimpleRenderer.exe
 ```
 
-本项目是纯 CPU 渲染器。高面数 OBJ、视锥体裁剪、背面剔除、Debug View 和 Shadow Mapping 都在 CPU 上完成，Debug 构建会明显更慢；查看复杂模型时请优先使用 Release 版本。
+本项目是纯 CPU 渲染器。高面数 OBJ、视锥体裁剪、背面剔除、Debug View、Shadow Mapping 和 PCF 阴影采样都在 CPU 上完成，Debug 构建会明显更慢；查看复杂模型时请优先使用 Release 版本。

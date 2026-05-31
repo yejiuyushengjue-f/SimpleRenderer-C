@@ -19,6 +19,7 @@ enum class RenderMode {
     UV,
     Shadow,
     Light,
+    LightDepth,
 };
 
 struct DirectionalLight {
