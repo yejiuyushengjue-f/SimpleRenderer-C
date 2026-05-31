@@ -16,6 +16,7 @@ public:
     const std::uint32_t* pixels() const { return pixels_.data(); }
     std::uint32_t* pixels() { return pixels_.data(); }
 
+    void resize(int width, int height);
     void clear(Color color);
     void clearDepth(float depth);
     void setPixel(int x, int y, Color color);

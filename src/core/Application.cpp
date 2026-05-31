@@ -11,6 +11,7 @@ Application::Application(void* nativeInstance, int showCommand)
     , lastFrameTime_(std::chrono::steady_clock::now())
 {
     window_.setTitle("SimpleRenderer - Render Mode: Final");
+    resizeFramebufferToWindow();
 }
 
 int Application::run()
@@ -31,6 +32,11 @@ int Application::run()
 void Application::update(float deltaSeconds)
 {
     const InputState input = window_.inputState();
+    if (input.toggleFullscreen) {
+        window_.toggleFullscreen();
+    }
+    resizeFramebufferToWindow();
+
     camera_.update(input, deltaSeconds);
     if (input.renderModeSelection > 0) {
         renderer_.setRenderMode(static_cast<RenderMode>(input.renderModeSelection - 1));
@@ -42,6 +48,15 @@ void Application::update(float deltaSeconds)
         lastWindowTitleMode_ = renderer_.renderMode();
     }
     scene_.update(deltaSeconds);
+}
+
+void Application::resizeFramebufferToWindow()
+{
+    int width = 0;
+    int height = 0;
+    if (window_.clientSize(width, height)) {
+        framebuffer_.resize(width, height);
+    }
 }
 
 void Application::render()

@@ -19,6 +19,8 @@ public:
     bool processMessages();
     InputState inputState();
     void setTitle(const char* title);
+    bool clientSize(int& width, int& height) const;
+    void toggleFullscreen();
     void present(const Framebuffer& framebuffer);
 
 private:
@@ -29,7 +31,12 @@ private:
     HDC deviceContext_ = nullptr;
     BITMAPINFO bitmapInfo_ = {};
     POINT lastMousePosition_ = {};
+    WINDOWPLACEMENT windowedPlacement_ = {};
+    DWORD windowedStyle_ = 0;
+    DWORD windowedExStyle_ = 0;
     bool hasLastMousePosition_ = false;
+    bool previousFullscreenToggleDown_ = false;
+    bool fullscreen_ = false;
 #endif
 };
 

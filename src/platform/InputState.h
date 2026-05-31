@@ -18,6 +18,7 @@ struct InputState {
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
     int renderModeSelection = 0;
+    bool toggleFullscreen = false;
 };
 
 } // namespace sr

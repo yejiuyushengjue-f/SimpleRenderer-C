@@ -17,6 +17,7 @@ public:
     int run();
 
 private:
+    void resizeFramebufferToWindow();
     void update(float deltaSeconds);
     void render();
 

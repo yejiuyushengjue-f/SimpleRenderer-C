@@ -34,6 +34,18 @@ Framebuffer::Framebuffer(int width, int height)
 {
 }
 
+void Framebuffer::resize(int width, int height)
+{
+    if (width == width_ && height == height_) {
+        return;
+    }
+
+    width_ = width;
+    height_ = height;
+    pixels_.assign(checkedPixelCount(width_, height_), 0);
+    depth_.assign(pixels_.size(), std::numeric_limits<float>::infinity());
+}
+
 void Framebuffer::clear(Color color)
 {
     std::fill(pixels_.begin(), pixels_.end(), color.toBGRA());
