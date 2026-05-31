@@ -178,16 +178,16 @@ std::vector<Vertex> makeCubeMesh(float size)
 
 std::vector<Vertex> makeGroundMesh()
 {
-    const float halfWidth = 4.2f;
-    const float y = -1.02f;
-    const float nearZ = -0.65f;
-    const float farZ = -7.2f;
+    const float halfWidth = 5.2f;
+    const float y = -1.05f;
+    const float nearZ = -0.25f;
+    const float farZ = -8.25f;
     const Vec3 normal { 0.0f, 1.0f, 0.0f };
 
     const Vertex a = makeVertex({ -halfWidth, y, nearZ }, { 0.0f, 0.0f }, normal);
-    const Vertex b = makeVertex({ halfWidth, y, nearZ }, { 8.0f, 0.0f }, normal);
-    const Vertex c = makeVertex({ halfWidth, y, farZ }, { 8.0f, 7.0f }, normal);
-    const Vertex d = makeVertex({ -halfWidth, y, farZ }, { 0.0f, 7.0f }, normal);
+    const Vertex b = makeVertex({ halfWidth, y, nearZ }, { 10.0f, 0.0f }, normal);
+    const Vertex c = makeVertex({ halfWidth, y, farZ }, { 10.0f, 8.0f }, normal);
+    const Vertex d = makeVertex({ -halfWidth, y, farZ }, { 0.0f, 8.0f }, normal);
 
     return {
         a,
@@ -204,9 +204,10 @@ std::vector<Vertex> makeGroundMesh()
 TestScene::TestScene()
     : modelTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
+    , groundTexture_(Texture::makeCheckerboard(256, 256, 12))
     , modelMaterial_(makeMaterial(&modelTexture_, { 210, 214, 220, 255 }, { 245, 245, 248, 255 }, { 245, 245, 255, 255 }, 0.23f, 0.95f, 0.38f, 36.0f))
     , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f))
-    , groundMaterial_(makeMaterial(nullptr, { 150, 156, 162, 255 }, { 190, 198, 204, 255 }, { 90, 96, 104, 255 }, 0.24f, 0.88f, 0.08f, 22.0f))
+    , groundMaterial_(makeMaterial(&groundTexture_, { 170, 176, 184, 255 }, { 215, 220, 220, 255 }, { 80, 86, 92, 255 }, 0.28f, 0.92f, 0.06f, 18.0f))
     , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
     , groundMesh_(makeGroundMesh())

@@ -17,9 +17,9 @@ private:
     Vec3 forward() const;
     Vec3 right() const;
 
-    Vec3 position_ = { 0.0f, 0.0f, 0.0f };
+    Vec3 position_ = { 0.0f, 0.42f, 0.0f };
     float yaw_ = 0.0f;
-    float pitch_ = 0.0f;
+    float pitch_ = radians(-10.0f);
     float moveSpeed_ = 2.4f;
     float lookSpeed_ = 1.65f;
     float mouseSensitivity_ = 0.0024f;
