@@ -11,6 +11,7 @@ namespace sr {
 namespace {
 
 std::vector<Vertex> makeSphereMesh(float radius, int latitudeSegments, int longitudeSegments);
+std::vector<Vertex> makeGroundMesh();
 
 Texture loadTextureOrCheckerboard(const wchar_t* fileName, int checkerCells)
 {
@@ -97,17 +98,21 @@ Material makeMaterial(
     float ambientStrength,
     float diffuseStrength,
     float specularStrength,
-    float shininess)
+    float shininess,
+    const Texture* normalTexture = nullptr,
+    float normalStrength = 1.0f)
 {
     Material material;
     material.ambientColor = ambientColor;
     material.diffuseColor = diffuseColor;
     material.specularColor = specularColor;
     material.diffuseTexture = diffuseTexture;
+    material.normalTexture = normalTexture;
     material.ambientStrength = ambientStrength;
     material.diffuseStrength = diffuseStrength;
     material.specularStrength = specularStrength;
     material.shininess = shininess;
+    material.normalStrength = normalStrength;
     return material;
 }
 
@@ -151,6 +156,7 @@ std::vector<Vertex> makeSphereMesh(float radius, int latitudeSegments, int longi
         }
     }
 
+    assignMeshTangents(vertices.data(), static_cast<int>(vertices.size()));
     return vertices;
 }
 
@@ -178,6 +184,7 @@ std::vector<Vertex> makeCubeMesh(float size)
     addQuad(vertices, { -h, h, h }, { h, h, h }, { h, h, -h }, { -h, h, -h }, { 0.0f, 1.0f, 0.0f });
     addQuad(vertices, { -h, -h, -h }, { h, -h, -h }, { h, -h, h }, { -h, -h, h }, { 0.0f, -1.0f, 0.0f });
 
+    assignMeshTangents(vertices.data(), static_cast<int>(vertices.size()));
     return vertices;
 }
 
@@ -223,6 +230,7 @@ std::vector<Vertex> makeGroundMesh()
         }
     }
 
+    assignMeshTangents(vertices.data(), static_cast<int>(vertices.size()));
     return vertices;
 }
 
@@ -231,9 +239,10 @@ std::vector<Vertex> makeGroundMesh()
 TestScene::TestScene()
     : modelTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
+    , normalTexture_(Texture::makeWaveNormalMap(192, 192, 6, 1.8f))
     , modelMaterial_(makeMaterial(&modelTexture_, { 210, 214, 220, 255 }, { 245, 245, 248, 255 }, { 245, 245, 255, 255 }, 0.23f, 0.95f, 0.38f, 36.0f))
-    , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f))
-    , groundMaterial_(makeMaterial(nullptr, { 205, 210, 205, 255 }, { 240, 244, 236, 255 }, { 70, 76, 84, 255 }, 0.34f, 0.96f, 0.04f, 16.0f))
+    , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f, &normalTexture_, 0.55f))
+    , groundMaterial_(makeMaterial(nullptr, { 205, 210, 205, 255 }, { 240, 244, 236, 255 }, { 70, 76, 84, 255 }, 0.34f, 0.96f, 0.04f, 16.0f, &normalTexture_, 0.85f))
     , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
     , groundMesh_(makeGroundMesh())

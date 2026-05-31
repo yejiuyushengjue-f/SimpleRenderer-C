@@ -204,6 +204,7 @@ std::vector<Vertex> ObjLoader::load(const std::filesystem::path& path, ObjLoadOp
     if (options.normalizeToUnit) {
         normalizeMesh(vertices, options.targetRadius);
     }
+    assignMeshTangents(vertices.data(), static_cast<int>(vertices.size()));
 
     return vertices;
 }

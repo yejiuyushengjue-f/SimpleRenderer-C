@@ -194,4 +194,34 @@ Texture Texture::makeCheckerboard(int width, int height, int cells)
     return Texture(width, height, std::move(pixels));
 }
 
+Texture Texture::makeWaveNormalMap(int width, int height, int cells, float strength)
+{
+    std::vector<Color> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    const float frequency = static_cast<float>(cells) * 2.0f * pi;
+
+    for (int y = 0; y < height; ++y) {
+        const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(height);
+        for (int x = 0; x < width; ++x) {
+            const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(width);
+            const float angleU = u * frequency;
+            const float angleV = v * frequency;
+            const float slopeU = std::cos(angleU) * std::sin(angleV) * strength;
+            const float slopeV = std::sin(angleU) * std::cos(angleV) * strength;
+            const Vec3 normal = normalize({ -slopeU, -slopeV, 1.0f });
+            const auto encode = [](float value) {
+                return static_cast<std::uint8_t>(std::clamp(value * 0.5f + 0.5f, 0.0f, 1.0f) * 255.0f);
+            };
+
+            pixels[static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x)] = {
+                encode(normal.x),
+                encode(normal.y),
+                encode(normal.z),
+                255,
+            };
+        }
+    }
+
+    return Texture(width, height, std::move(pixels));
+}
+
 } // namespace sr

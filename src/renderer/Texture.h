@@ -20,6 +20,7 @@ public:
 
     static Texture loadFromFile(const wchar_t* path);
     static Texture makeCheckerboard(int width, int height, int cells);
+    static Texture makeWaveNormalMap(int width, int height, int cells, float strength);
 
 private:
     int width_ = 0;

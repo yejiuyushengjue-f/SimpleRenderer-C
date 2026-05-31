@@ -21,6 +21,8 @@ struct ScreenVertex {
     Vec3 viewPositionOverW;
     Vec2 uvOverW;
     Vec3 normalOverW;
+    Vec3 tangentOverW;
+    float tangentSignOverW = 1.0f;
     Color color;
 };
 
@@ -30,6 +32,8 @@ struct ClipVertex {
     Vec3 viewPosition;
     Vec2 uv;
     Vec3 normal;
+    Vec3 tangent;
+    float tangentSign = 1.0f;
     Color color;
 };
 
@@ -175,6 +179,12 @@ ClipVertex lerpClipVertex(const ClipVertex& a, const ClipVertex& b, float t)
             lerpFloat(a.normal.y, b.normal.y),
             lerpFloat(a.normal.z, b.normal.z),
         }),
+        normalize({
+            lerpFloat(a.tangent.x, b.tangent.x),
+            lerpFloat(a.tangent.y, b.tangent.y),
+            lerpFloat(a.tangent.z, b.tangent.z),
+        }),
+        lerpFloat(a.tangentSign, b.tangentSign),
         lerpColor(a.color, b.color, t),
     };
 }
@@ -254,6 +264,8 @@ bool toScreenVertex(const ClipVertex& vertex, int width, int height, ScreenVerte
         vertex.viewPosition * invW,
         { vertex.uv.x * invW, vertex.uv.y * invW },
         vertex.normal * invW,
+        vertex.tangent * invW,
+        vertex.tangentSign * invW,
         vertex.color,
     };
     return true;
@@ -330,6 +342,26 @@ Color uvToColor(Vec2 uv)
     };
 
     return { repeat(uv.x), repeat(uv.y), 32, 255 };
+}
+
+Vec3 applyNormalMap(Vec3 normal, Vec3 tangent, float tangentSign, Vec2 uv, const Material& material)
+{
+    const Vec3 n = normalize(normal);
+    if (!material.normalTexture || material.normalStrength <= 0.0f) {
+        return n;
+    }
+
+    const Color sample = material.normalTexture->sample(uv);
+    Vec3 tangentSpaceNormal {
+        ((static_cast<float>(sample.r) / 255.0f) * 2.0f - 1.0f) * material.normalStrength,
+        ((static_cast<float>(sample.g) / 255.0f) * 2.0f - 1.0f) * material.normalStrength,
+        (static_cast<float>(sample.b) / 255.0f) * 2.0f - 1.0f,
+    };
+    tangentSpaceNormal = normalize(tangentSpaceNormal);
+
+    const Vec3 t = orthogonalizeTangent(tangent, n);
+    const Vec3 b = cross(n, t) * (tangentSign < 0.0f ? -1.0f : 1.0f);
+    return normalize(t * tangentSpaceNormal.x + b * tangentSpaceNormal.y + n * tangentSpaceNormal.z);
 }
 
 Color addLight(Color current, Color lightColor, float diffuse, float specular, Color diffuseColor, Color specularColor)
@@ -684,7 +716,8 @@ void Renderer::drawTriangle(
         const Vec4 viewPosition = modelView * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec4 clip = mvp * Vec4 { vertex.position.x, vertex.position.y, vertex.position.z, 1.0f };
         const Vec3 normal = transformDirection(modelView, vertex.normal);
-        if (!isFinite(worldPosition) || !isFinite(viewPosition) || !isFinite(clip) || !isFinite(normal)) {
+        const Vec3 tangent = transformDirection(modelView, vertex.tangent);
+        if (!isFinite(worldPosition) || !isFinite(viewPosition) || !isFinite(clip) || !isFinite(normal) || !isFinite(tangent)) {
             return;
         }
 
@@ -694,6 +727,8 @@ void Renderer::drawTriangle(
             { viewPosition.x, viewPosition.y, viewPosition.z },
             vertex.uv,
             normal,
+            tangent,
+            vertex.tangentSign,
             vertex.color,
         };
     }
@@ -747,12 +782,23 @@ void Renderer::drawTriangle(
                     (screen[0].uvOverW.y * w0 + screen[1].uvOverW.y * w1 + screen[2].uvOverW.y * w2) / interpolatedInvW,
                 };
                 Vec3 normal {};
+                Vec3 shadingNormal {};
                 if (needsNormal) {
                     normal = {
                         (screen[0].normalOverW.x * w0 + screen[1].normalOverW.x * w1 + screen[2].normalOverW.x * w2) / interpolatedInvW,
                         (screen[0].normalOverW.y * w0 + screen[1].normalOverW.y * w1 + screen[2].normalOverW.y * w2) / interpolatedInvW,
                         (screen[0].normalOverW.z * w0 + screen[1].normalOverW.z * w1 + screen[2].normalOverW.z * w2) / interpolatedInvW,
                     };
+                    const Vec3 tangent = {
+                        (screen[0].tangentOverW.x * w0 + screen[1].tangentOverW.x * w1 + screen[2].tangentOverW.x * w2) / interpolatedInvW,
+                        (screen[0].tangentOverW.y * w0 + screen[1].tangentOverW.y * w1 + screen[2].tangentOverW.y * w2) / interpolatedInvW,
+                        (screen[0].tangentOverW.z * w0 + screen[1].tangentOverW.z * w1 + screen[2].tangentOverW.z * w2) / interpolatedInvW,
+                    };
+                    const float tangentSign = (screen[0].tangentSignOverW * w0 + screen[1].tangentSignOverW * w1 + screen[2].tangentSignOverW * w2) / interpolatedInvW;
+                    if (!isFinite(normal) || !isFinite(tangent) || !std::isfinite(tangentSign)) {
+                        continue;
+                    }
+                    shadingNormal = applyNormalMap(normal, tangent, tangentSign, uv, command.material);
                 }
 
                 Vec3 viewPosition {};
@@ -796,13 +842,13 @@ void Renderer::drawTriangle(
                 Color color = albedo;
                 switch (mode) {
                 case RenderMode::Final:
-                    color = applyLighting(surfaceColor, normal, viewPosition, lights, command.material, shadow);
+                    color = applyLighting(surfaceColor, shadingNormal, viewPosition, lights, command.material, shadow);
                     break;
                 case RenderMode::Albedo:
                     color = albedo;
                     break;
                 case RenderMode::Normal:
-                    color = normalToColor(normal);
+                    color = normalToColor(shadingNormal);
                     break;
                 case RenderMode::Depth:
                     color = grayscale(depth * 0.5f + 0.5f);
@@ -814,7 +860,7 @@ void Renderer::drawTriangle(
                     color = grayscale(shadow);
                     break;
                 case RenderMode::Light:
-                    color = applyLighting({ 255, 255, 255, 255 }, normal, viewPosition, lights, command.material, shadow);
+                    color = applyLighting({ 255, 255, 255, 255 }, shadingNormal, viewPosition, lights, command.material, shadow);
                     break;
                 case RenderMode::LightDepth:
                     color = lightDepth >= 0.0f ? grayscale(lightDepth) : Color { 64, 0, 96, 255 };
