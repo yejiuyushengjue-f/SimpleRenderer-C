@@ -84,6 +84,11 @@ Vertex makeVertex(Vec3 position, Vec2 uv, Vec3 normal)
     return { position, uv, normalize(normal), { 255, 255, 255, 255 } };
 }
 
+Vertex makeVertex(Vec3 position, Vec2 uv, Vec3 normal, Color color)
+{
+    return { position, uv, normalize(normal), color };
+}
+
 Material makeMaterial(
     const Texture* diffuseTexture,
     Color ambientColor,
@@ -178,25 +183,47 @@ std::vector<Vertex> makeCubeMesh(float size)
 
 std::vector<Vertex> makeGroundMesh()
 {
-    const float halfWidth = 5.2f;
-    const float y = -1.05f;
-    const float nearZ = -0.25f;
-    const float farZ = -8.25f;
+    constexpr int columns = 12;
+    constexpr int rows = 10;
+    const float halfWidth = 5.4f;
+    const float y = -1.04f;
+    const float nearZ = -1.65f;
+    const float farZ = -8.85f;
+    const float cellWidth = (halfWidth * 2.0f) / static_cast<float>(columns);
+    const float cellDepth = (nearZ - farZ) / static_cast<float>(rows);
     const Vec3 normal { 0.0f, 1.0f, 0.0f };
 
-    const Vertex a = makeVertex({ -halfWidth, y, nearZ }, { 0.0f, 0.0f }, normal);
-    const Vertex b = makeVertex({ halfWidth, y, nearZ }, { 10.0f, 0.0f }, normal);
-    const Vertex c = makeVertex({ halfWidth, y, farZ }, { 10.0f, 8.0f }, normal);
-    const Vertex d = makeVertex({ -halfWidth, y, farZ }, { 0.0f, 8.0f }, normal);
+    std::vector<Vertex> vertices;
+    vertices.reserve(static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows) * 6);
 
-    return {
-        a,
-        b,
-        c,
-        a,
-        c,
-        d,
-    };
+    for (int row = 0; row < rows; ++row) {
+        const float z0 = nearZ - static_cast<float>(row) * cellDepth;
+        const float z1 = nearZ - static_cast<float>(row + 1) * cellDepth;
+        for (int column = 0; column < columns; ++column) {
+            const float x0 = -halfWidth + static_cast<float>(column) * cellWidth;
+            const float x1 = -halfWidth + static_cast<float>(column + 1) * cellWidth;
+            const bool dark = ((row + column) % 2) == 0;
+            const Color color = dark ? Color { 55, 68, 76, 255 } : Color { 226, 232, 216, 255 };
+            const float u0 = static_cast<float>(column);
+            const float u1 = static_cast<float>(column + 1);
+            const float v0 = static_cast<float>(row);
+            const float v1 = static_cast<float>(row + 1);
+
+            const Vertex a = makeVertex({ x0, y, z0 }, { u0, v0 }, normal, color);
+            const Vertex b = makeVertex({ x1, y, z0 }, { u1, v0 }, normal, color);
+            const Vertex c = makeVertex({ x1, y, z1 }, { u1, v1 }, normal, color);
+            const Vertex d = makeVertex({ x0, y, z1 }, { u0, v1 }, normal, color);
+
+            vertices.push_back(a);
+            vertices.push_back(b);
+            vertices.push_back(c);
+            vertices.push_back(a);
+            vertices.push_back(c);
+            vertices.push_back(d);
+        }
+    }
+
+    return vertices;
 }
 
 } // namespace
@@ -204,10 +231,9 @@ std::vector<Vertex> makeGroundMesh()
 TestScene::TestScene()
     : modelTexture_(loadTextureOrCheckerboard(L"Frosted Metal Texture.jpeg", 10))
     , cubeTexture_(loadTextureOrCheckerboard(L"Brushed metal texture.jpeg", 8))
-    , groundTexture_(Texture::makeCheckerboard(256, 256, 12))
     , modelMaterial_(makeMaterial(&modelTexture_, { 210, 214, 220, 255 }, { 245, 245, 248, 255 }, { 245, 245, 255, 255 }, 0.23f, 0.95f, 0.38f, 36.0f))
     , cubeMaterial_(makeMaterial(&cubeTexture_, { 170, 176, 184, 255 }, { 210, 220, 232, 255 }, { 255, 250, 230, 255 }, 0.20f, 0.9f, 0.72f, 78.0f))
-    , groundMaterial_(makeMaterial(&groundTexture_, { 170, 176, 184, 255 }, { 215, 220, 220, 255 }, { 80, 86, 92, 255 }, 0.28f, 0.92f, 0.06f, 18.0f))
+    , groundMaterial_(makeMaterial(nullptr, { 205, 210, 205, 255 }, { 240, 244, 236, 255 }, { 70, 76, 84, 255 }, 0.34f, 0.96f, 0.04f, 16.0f))
     , modelMesh_(loadObjOrSphere(usingObjModel_))
     , cubeMesh_(makeCubeMesh(1.35f))
     , groundMesh_(makeGroundMesh())

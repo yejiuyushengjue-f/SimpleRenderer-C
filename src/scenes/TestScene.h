@@ -22,7 +22,6 @@ private:
     bool usingObjModel_ = false;
     Texture modelTexture_;
     Texture cubeTexture_;
-    Texture groundTexture_;
     Material modelMaterial_;
     Material cubeMaterial_;
     Material groundMaterial_;
