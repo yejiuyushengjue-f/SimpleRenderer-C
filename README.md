@@ -4,16 +4,23 @@
 
 ## 项目预览
 
-截图文件预留在以下位置，后续建议使用 Release 版本运行项目后补充：
+### 最终渲染
 
-| 画面 | 建议文件 | 展示重点 |
-| --- | --- | --- |
-| 最终渲染 | `docs/images/final.png` | 材质、纹理、多光源、阴影和模型展示 |
-| 法线调试 | `docs/images/normal.png` | Normal Mapping 与像素级法线扰动 |
-| 阴影调试 | `docs/images/shadow.png` | Shadow Mapping、bias 与 PCF 软阴影 |
-| 调试视图合集 | `docs/images/debug-views.png` | Albedo、Depth、UV、Light-space Depth 等视图 |
+展示材质、纹理、多光源、模型加载与最终着色效果。
 
-建议截图模式：`Final`、`Normal`、`Shadow Factor`、`Light-space Depth`。
+![最终渲染](docs/images/final.png)
+
+### 法线调试
+
+展示观察空间法线与 Normal Mapping 带来的像素级法线扰动。
+
+![法线调试](docs/images/normal.png)
+
+### 调试视图合集
+
+展示 Albedo、Depth、UV、Light-space Depth 等渲染中间结果，便于定位纹理坐标、深度和光照空间问题。
+
+![调试视图合集](docs/images/debug-views.png)
 
 ## 项目亮点
 
@@ -51,7 +58,7 @@
 
 ## 我实现了什么
 
-这个项目适合作为图形学/引擎方向简历项目展示，重点体现：
+这个项目重点体现：
 
 - 能独立实现渲染管线底层机制，而不仅是使用高级图形 API。
 - 熟悉矩阵变换、裁剪空间、重心插值、深度缓冲、切线空间和光照模型。
