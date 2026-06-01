@@ -35,6 +35,13 @@
 - OBJ 模型加载：支持 Wavefront OBJ 的位置、UV、法线、负索引和多边形三角化。
 - Debug Views：通过数字键切换 Albedo、Normal、Depth、UV、Shadow Factor、Light、Light-space Depth 等调试视图。
 
+## 核心技术实现
+
+- 顶点到屏幕空间转换：实现 Model/View/Projection 变换、齐次除法、视口映射和观察空间属性传递。
+- 视锥裁剪与三角形光栅化：在齐次裁剪空间裁剪三角形，再使用屏幕空间包围盒和重心坐标逐像素填充。
+- 透视校正与像素着色：基于 `1/w` 对 UV、法线、切线和坐标进行校正插值，并完成纹理、材质、法线贴图和多光源计算。
+- 阴影与调试视图：生成光源空间深度图，结合 bias 与 PCF 计算软阴影，并提供多种中间结果视图辅助验证。
+
 ## 技术栈
 
 - 语言：C++20
@@ -42,6 +49,41 @@
 - 平台：Windows / Win32 API
 - 图像解码：Windows Imaging Component
 - 核心方向：CPU Rasterization、Software Rendering、Real-time Rendering Fundamentals
+
+## 项目结构
+
+```text
+.
+├── CMakeLists.txt
+├── README.md
+├── docs/images/          # README 展示截图
+├── res/
+│   ├── Model/            # OBJ 模型资源
+│   └── Texture/          # diffuse / normal 纹理资源
+└── src/
+    ├── core/             # Application、Camera、Framebuffer
+    ├── math/             # 向量、矩阵和基础数学函数
+    ├── platform/         # Win32 窗口、输入和帧缓冲提交
+    ├── renderer/         # 光栅化、材质、纹理、OBJ 加载
+    └── scenes/           # 默认测试场景和 Draw Command 组织
+```
+
+## 管线流程图
+
+```mermaid
+flowchart LR
+    A["场景与 Draw Command"] --> B["顶点变换 MVP"]
+    B --> C["视锥裁剪"]
+    C --> D["透视除法与视口映射"]
+    D --> E["背面剔除与包围盒扫描"]
+    E --> F["重心坐标光栅化"]
+    F --> G["透视校正插值"]
+    G --> H["深度测试"]
+    H --> I["纹理 / Normal Map / 光照"]
+    I --> J["Shadow Mapping 与 PCF"]
+    J --> K["写入帧缓冲"]
+    K --> L["Win32 窗口显示"]
+```
 
 ## 功能展示
 
@@ -60,7 +102,7 @@
 
 这个项目重点体现：
 
-- 能独立实现渲染管线底层机制，而不仅是使用高级图形 API。
+- 该项目主要用于加深对 GPU 渲染管线底层机制的理解，包括顶点处理、裁剪、光栅化、插值、深度测试、像素着色和调试视图设计，为后续学习 OpenGL / DirectX / Vulkan 和游戏引擎渲染模块打基础。
 - 熟悉矩阵变换、裁剪空间、重心插值、深度缓冲、切线空间和光照模型。
 - 能处理实际工程中的资源加载、窗口交互、异常保护和调试视图设计。
 - 能将渲染效果拆解为可验证的中间视图，便于定位 UV、法线、深度和阴影问题。
@@ -110,6 +152,14 @@ cmake --build build --config Debug
 .\build\Debug\CPURasterizer.exe
 ```
 
+## 后续规划
+
+- 接入 ImGui 调试面板，支持实时调整渲染模式、光源参数、阴影 bias 与 PCF 设置。
+- 增加 FPS、帧耗时、三角形数量、Shadow Pass / Main Pass 耗时等性能统计，用于分析 CPU 渲染瓶颈。
+- 优化光栅化阶段性能，包括背面剔除、包围盒扫描、Shadow Map 分辨率控制和 PCF 采样开关。
+- 完善材质与色彩处理，加入 Gamma Correction、Tone Mapping，并尝试实现简化 PBR 材质模型。
+- 探索 Tile-based Rasterization 与多线程渲染，提高复杂模型和高分辨率场景下的渲染性能。
+
 ## 项目边界
 
-当前版本聚焦于学习和展示 CPU 光栅化管线，因此没有接入 GPU 图形 API，也没有做大型引擎架构封装。命名空间 `sr`、资源目录结构和渲染核心逻辑保持不变。
+当前版本聚焦于学习和展示 CPU 光栅化管线，因此没有接入 GPU 图形 API，也没有做大型引擎架构封装。
