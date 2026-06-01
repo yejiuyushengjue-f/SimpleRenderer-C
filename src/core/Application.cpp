@@ -7,10 +7,10 @@ namespace sr {
 
 Application::Application(void* nativeInstance, int showCommand)
     : framebuffer_(960, 540)
-    , window_(nativeInstance, showCommand, framebuffer_.width(), framebuffer_.height(), "SimpleRenderer")
+    , window_(nativeInstance, showCommand, framebuffer_.width(), framebuffer_.height(), "CPU Rasterizer")
     , lastFrameTime_(std::chrono::steady_clock::now())
 {
-    window_.setTitle("SimpleRenderer - Render Mode: Final");
+    window_.setTitle("CPU Rasterizer - Render Mode: Final");
     resizeFramebufferToWindow();
 }
 
@@ -42,7 +42,7 @@ void Application::update(float deltaSeconds)
         renderer_.setRenderMode(static_cast<RenderMode>(input.renderModeSelection - 1));
     }
     if (renderer_.renderMode() != lastWindowTitleMode_) {
-        std::string title = "SimpleRenderer - Render Mode: ";
+        std::string title = "CPU Rasterizer - Render Mode: ";
         title += renderer_.renderModeName();
         window_.setTitle(title.c_str());
         lastWindowTitleMode_ = renderer_.renderMode();

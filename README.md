@@ -1,92 +1,108 @@
-# SimpleRenderer
+# CPU Rasterizer
 
-一个用于学习经典 CPU 渲染管线的简易软件渲染器。
+一个使用 C++20 从零实现的纯 CPU 软件光栅化渲染器。项目重点不是调用现成图形 API，而是完整拆解并实现现代渲染管线中的关键环节：窗口显示、帧缓冲、顶点变换、视锥裁剪、三角形光栅化、深度测试、透视校正插值、纹理采样、法线贴图、多光源着色与阴影映射。
 
-## Current Features
+## 项目预览
 
-- Win32 窗口创建与 CPU 端 BGRA 像素缓冲区显示。
-- 窗口 client 区尺寸可任意调整，帧缓冲会跟随窗口分辨率重建；支持 `F11` 或 `Alt+Enter` 切换全屏。
-- 颜色缓冲区和深度缓冲区，支持逐像素深度测试。
-- 基础数学库：`Vec2`、`Vec3`、`Vec4`、`Mat4`、点乘、叉乘、归一化、平移、X/Y/Z 旋转、透视投影和正交投影。
-- 主循环结构，包含场景更新、渲染和帧缓冲提交。
-- 摄像机模块，支持键盘移动、方向键视角旋转、鼠标右键拖动视角，并生成 View/Projection 矩阵；初始视角会从稍高位置俯视场景，方便直接观察地面阴影。
-- 摄像机俯仰角限制在 `-86` 到 `86` 度，避免视角上下翻转。
-- Render Mode / Debug View 系统，可通过数字键切换并在窗口标题显示当前模式。
-- Render Mode 会按模式跳过不需要的贴图采样、阴影查询和光照计算，便于观察模块时减少额外开销。
-- 传统 Material 系统：支持 ambient、diffuse、specular 颜色，环境/漫反射/高光强度，shininess，以及可选 diffuse 纹理和 normal 纹理。
-- 鲁棒性防护：对窗口/帧缓冲/纹理/阴影图尺寸做参数检查，过滤 NaN/Inf 深度和插值结果，窗口失焦时停止响应全局输入。
-- 基于 Draw Command 的基础管线结构，支持网格顶点、模型变换和可选材质纹理绑定。
-- 三角形列表网格渲染，每个网格可以包含多个三角形。
-- Wavefront OBJ 模型加载，支持位置、UV、法线、负索引和多边形三角化。
-- 背面剔除：在屏幕空间保留面向摄像机的三角形并剔除背面，减少无效光栅化。
-- 视锥体裁剪：在齐次裁剪空间按左右、上下、近远六个平面裁剪三角形，跨越视锥边界的面会被保留并切分。
-- 使用屏幕空间包围盒和重心坐标进行三角形填充光栅化。
-- 顶点属性：位置、UV、法线、切线、切线空间手性和顶点颜色。
-- 纹理映射，支持通过 Windows Imaging Component 加载 JPEG 纹理。
-- 当图片不存在或解码失败时，自动生成棋盘格备用纹理。
-- 对 UV、法线、切线、世界坐标和观察空间坐标进行透视校正插值。
-- 像素着色支持材质颜色、纹理颜色与顶点颜色共同参与计算。
-- Normal Mapping：基于每三角形 UV 自动生成切线，在像素阶段采样切线空间 normal map 并转换到观察空间参与光照。
-- 多光源着色：环境光、多个方向光、点光源、材质化 Lambert 漫反射和 Blinn-Phong 高光。
-- 主方向光 Shadow Mapping，使用 CPU 生成的光源空间深度图；支持 constant bias、slope-scale bias 和 3x3 加权 PCF 软阴影。
-- 程序化三维网格：UV 球体、鹅卵石纹理立方体和由多块高对比棋盘格 tile 组成、可接收阴影的地面。
-- 测试场景会加载 `res/Model` 或 `res/Models` 下找到的第一个 OBJ 模型，使其面向初始摄像机并保持水平旋转；场景包含一个绑定鹅卵石 diffuse 与 normal 纹理的后方立方体和一块地面，用于观察投影阴影；如果没有 OBJ，则使用前方球体和后方立方体作为备用场景。
+截图文件预留在以下位置，后续建议使用 Release 版本运行项目后补充：
 
-## Debug Views
+| 画面 | 建议文件 | 展示重点 |
+| --- | --- | --- |
+| 最终渲染 | `docs/images/final.png` | 材质、纹理、多光源、阴影和模型展示 |
+| 法线调试 | `docs/images/normal.png` | Normal Mapping 与像素级法线扰动 |
+| 阴影调试 | `docs/images/shadow.png` | Shadow Mapping、bias 与 PCF 软阴影 |
+| 调试视图合集 | `docs/images/debug-views.png` | Albedo、Depth、UV、Light-space Depth 等视图 |
 
-- `1` Final：完整最终渲染，包含材质、纹理、顶点颜色、多光源、Blinn-Phong 高光和阴影。
-- `2` Albedo：显示纹理采样、顶点颜色和材质 diffuse 颜色共同得到的基础颜色，用于检查材质、纹理与 UV。
-- `3` Normal：将观察空间法线映射到 RGB；如果材质绑定了 normal map，则显示扰动后的最终着色法线。
-- `4` Depth：显示当前摄像机视角下的 NDC 深度，用于检查深度缓冲和遮挡关系。
-- `5` UV：将 UV 坐标映射到颜色，用于观察纹理坐标展开和重复。
-- `6` Shadow Factor：显示经过 bias 和 PCF 后的阴影因子，白色为受光，深色为阴影，中间灰度为软阴影过渡。
-- `7` Light：使用白色表面显示当前材质的纯光照响应，用于观察多光源、漫反射、高光、shininess 和阴影对亮度的影响。
-- `8` Light-space Depth：显示当前像素投影到主方向光光源空间后的深度，黑色更靠近光源，白色更远；紫色表示超出当前光源正交投影范围。
+建议截图模式：`Final`、`Normal`、`Shadow Factor`、`Light-space Depth`。
 
-## Assets
+## 项目亮点
 
-默认场景会查找这些纹理文件：
+- 纯 CPU 渲染管线：从顶点处理到像素着色全部在 CPU 侧完成，不依赖 Direct3D/OpenGL/Vulkan。
+- Win32 窗口与帧缓冲：支持窗口尺寸变化、BGRA 像素缓冲显示、深度缓冲和全屏切换。
+- 完整三角形管线：包含齐次裁剪、背面剔除、屏幕空间包围盒、重心坐标光栅化和逐像素深度测试。
+- 透视校正插值：对 UV、法线、切线、世界坐标和观察空间坐标进行透视校正，保证纹理和光照结果稳定。
+- 材质与纹理系统：支持 ambient/diffuse/specular 参数、JPEG/PNG 纹理加载、缺失资源时自动生成棋盘格备用纹理。
+- Normal Mapping：根据 UV 自动生成切线空间，在像素阶段采样 normal map 并参与光照计算。
+- 多光源着色：实现环境光、方向光、点光源、Lambert 漫反射和 Blinn-Phong 高光。
+- Shadow Mapping：在 CPU 侧生成主方向光深度图，支持 constant bias、slope-scale bias 和 3x3 加权 PCF 软阴影。
+- OBJ 模型加载：支持 Wavefront OBJ 的位置、UV、法线、负索引和多边形三角化。
+- Debug Views：通过数字键切换 Albedo、Normal、Depth、UV、Shadow Factor、Light、Light-space Depth 等调试视图。
+
+## 技术栈
+
+- 语言：C++20
+- 构建：CMake
+- 平台：Windows / Win32 API
+- 图像解码：Windows Imaging Component
+- 核心方向：CPU Rasterization、Software Rendering、Real-time Rendering Fundamentals
+
+## 功能展示
+
+| 模式 | 按键 | 说明 |
+| --- | --- | --- |
+| Final | `1` | 最终渲染结果，包含材质、纹理、多光源、Blinn-Phong 高光与阴影 |
+| Albedo | `2` | 展示纹理采样、顶点颜色与材质 diffuse 共同得到的基础颜色 |
+| Normal | `3` | 将观察空间法线映射到 RGB，用于检查法线与 normal map |
+| Depth | `4` | 展示当前相机视角下的 NDC 深度 |
+| UV | `5` | 将 UV 坐标映射为颜色，用于检查纹理坐标 |
+| Shadow Factor | `6` | 展示 bias 和 PCF 后的阴影因子 |
+| Light | `7` | 使用白色表面展示纯光照响应 |
+| Light-space Depth | `8` | 展示像素投影到主方向光空间后的深度 |
+
+## 我实现了什么
+
+这个项目适合作为图形学/引擎方向简历项目展示，重点体现：
+
+- 能独立实现渲染管线底层机制，而不仅是使用高级图形 API。
+- 熟悉矩阵变换、裁剪空间、重心插值、深度缓冲、切线空间和光照模型。
+- 能处理实际工程中的资源加载、窗口交互、异常保护和调试视图设计。
+- 能将渲染效果拆解为可验证的中间视图，便于定位 UV、法线、深度和阴影问题。
+
+## 场景与资源
+
+默认场景会加载以下资源：
 
 - `res/Texture/Frosted Metal Texture.jpeg`
 - `res/Texture/Cobblestone_pavement_texture.jpeg`
 - `res/Texture/Cobblestone_pavement_normal_texture.png`
+- `res/Model/Linnea.obj`
 
-渲染器会从当前工作目录以及常见的构建输出父目录中查找资源。如果图片存在但无法解码，程序会退回到自动生成的棋盘格纹理，不会因为资源问题直接退出。鹅卵石 normal map 的 AVIF 源文件也保留在资源目录中，运行时加载 PNG 派生文件以保持 Windows 解码兼容性。
-
-OBJ 模型可以放在以下任意目录：
+OBJ 模型可以放在：
 
 - `res/Model`
 - `res/Models`
 
-加载器会读取找到的第一个 `.obj` 文件，将模型归一化到适合当前场景的尺寸，并使用磨砂金属纹理作为材质纹理。支持的面格式包括 `v`、`v/vt`、`v//vn` 和 `v/vt/vn`。
+加载器会读取找到的第一个 `.obj` 文件，并将模型归一化到适合当前场景的尺寸。如果没有可用 OBJ，程序会回退到内置球体与立方体场景。
 
-## Controls
+## 操作说明
 
-- `W` / `S`：前进和后退。
-- `A` / `D`：向左和向右移动。
-- `Q` / `E`：向下和向上移动。
-- `Space`：向上移动。
-- 方向键：旋转视角。
-- 按住鼠标右键并拖动：旋转视角。
-- `Shift`：按住后加速移动。
-- `F11` / `Alt+Enter`：切换窗口全屏。
-- `1` 到 `8`：切换 Render Mode / Debug View。
+| 输入 | 功能 |
+| --- | --- |
+| `W` / `S` | 前进 / 后退 |
+| `A` / `D` | 左移 / 右移 |
+| `Q` / `E` | 下移 / 上移 |
+| `Space` | 上移 |
+| `Shift` | 加速移动 |
+| 方向键 | 旋转视角 |
+| 鼠标右键拖拽 | 旋转视角 |
+| `F11` / `Alt+Enter` | 切换全屏 |
+| `1` 到 `8` | 切换 Render Mode / Debug View |
 
-## Build
+## 构建与运行
 
 ```powershell
 cmake -S . -B build
-cmake --build build
-.\build\Debug\SimpleRenderer.exe
+cmake --build build --config Release
+.\build\Release\CPURasterizer.exe
 ```
 
-如果你的 CMake 生成器创建了不同的配置目录，请使用 CMake 输出中显示的可执行文件路径。
-
-交互测试复杂模型时，建议使用 Release 构建：
+Debug 版本也可以运行，但复杂模型、视锥裁剪、Shadow Mapping 和 PCF 阴影采样都在 CPU 上完成，查看完整场景时建议优先使用 Release 构建。
 
 ```powershell
-cmake --build build --config Release
-.\build\Release\SimpleRenderer.exe
+cmake --build build --config Debug
+.\build\Debug\CPURasterizer.exe
 ```
 
-本项目是纯 CPU 渲染器。高面数 OBJ、视锥体裁剪、背面剔除、Debug View、Shadow Mapping 和 PCF 阴影采样都在 CPU 上完成，Debug 构建会明显更慢；查看复杂模型时请优先使用 Release 版本。
+## 项目边界
+
+当前版本聚焦于学习和展示 CPU 光栅化管线，因此没有接入 GPU 图形 API，也没有做大型引擎架构封装。命名空间 `sr`、资源目录结构和渲染核心逻辑保持不变。
